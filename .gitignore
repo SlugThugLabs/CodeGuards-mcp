@@ -12,3 +12,6 @@ build/
 .codeguards/
 .pytest_cache/
 
+# Tool artifacts (regenerated index, not docs)
+.planning/slugaudit/
+
