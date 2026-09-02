@@ -15,3 +15,4 @@ build/
 # Tool artifacts (regenerated index, not docs)
 .planning/slugaudit/
 
+\n# Tool caches in .planning\n.planning/*/*.db\n.planning/*/*.db-wal\n.planning/*/*.db-shm\n
