@@ -6,7 +6,7 @@
 enum LexState {
     Normal,
     LineComment,
-    BlockComment { depth: usize },
+    BlockComment,
     StringLiteral { escaped: bool },
     CharLiteral { escaped: bool },
 }
@@ -41,7 +41,7 @@ pub fn tokenize_source(source: &str) -> Vec<StrippedLine> {
                         state = LexState::LineComment;
                         break;
                     } else if b == b'/' && next == Some(b'*') {
-                        state = LexState::BlockComment { depth: 1 };
+                        state = LexState::BlockComment;
                         i += 2;
                         continue;
                     } else if b == b'"' {
@@ -58,17 +58,9 @@ pub fn tokenize_source(source: &str) -> Vec<StrippedLine> {
                     }
                 }
                 LexState::LineComment => break,
-                LexState::BlockComment { depth } => {
-                    if b == b'/' && next == Some(b'*') {
-                        state = LexState::BlockComment { depth: depth + 1 };
-                        i += 2;
-                        continue;
-                    } else if b == b'*' && next == Some(b'/') {
-                        if depth == 1 {
-                            state = LexState::Normal;
-                        } else {
-                            state = LexState::BlockComment { depth: depth - 1 };
-                        }
+                LexState::BlockComment => {
+                    if b == b'*' && next == Some(b'/') {
+                        state = LexState::Normal;
                         i += 2;
                         continue;
                     }
@@ -160,21 +152,163 @@ pub fn extract_imported_modules(source: &str) -> Vec<(usize, String)> {
         let code = line.code_only.trim();
 
         // Rust: use crate::foo::bar; or use foo::bar;
-        if code.starts_with("use ") {
-            let path_part = code["use ".len()..]
-                .trim_matches(';')
-                .trim();
+        if let Some(stripped) = code.strip_prefix("use ") {
+            let path_part = stripped.trim_matches(';').trim();
             imports.push((line.line_number, path_part.to_string()));
         }
         // Python: import foo or from foo import bar
-        else if code.starts_with("import ") {
-            let mod_name = code["import ".len()..].split_whitespace().next().unwrap_or("");
+        else if let Some(stripped) = code.strip_prefix("import ") {
+            let mod_name = stripped.split_whitespace().next().unwrap_or("");
             imports.push((line.line_number, mod_name.to_string()));
-        } else if code.starts_with("from ") {
-            let mod_name = code["from ".len()..].split_whitespace().next().unwrap_or("");
+        } else if let Some(stripped) = code.strip_prefix("from ") {
+            let mod_name = stripped.split_whitespace().next().unwrap_or("");
             imports.push((line.line_number, mod_name.to_string()));
         }
     }
 
     imports
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Tokenizer state-machine negative cases ──────────────────────────
+
+    #[test]
+    fn commented_out_rust_imports_are_not_extracted() {
+        let src = "// use crate::secret;\n// use super::danger;\nuse crate::real;\n";
+        let imports = extract_imported_modules(src);
+        assert_eq!(imports.len(), 1, "only the live import must count: {imports:?}");
+        assert_eq!(imports[0].1, "crate::real");
+    }
+
+    #[test]
+    fn commented_out_python_imports_are_not_extracted() {
+        let src = "# import evil\n# from evil import bad\nimport good\nfrom good import thing\n";
+        let imports = extract_imported_modules(src);
+        assert_eq!(imports.len(), 2, "only live imports must count: {imports:?}");
+        assert_eq!(imports[0].1, "good");
+        assert_eq!(imports[1].1, "good");
+    }
+
+    #[test]
+    fn block_comment_imports_are_not_extracted() {
+        let src = "/* use crate::hidden;\n   import phantom */\nuse crate::live;\n";
+        let imports = extract_imported_modules(src);
+        assert_eq!(imports.len(), 1, "block-comment imports must be stripped: {imports:?}");
+        assert_eq!(imports[0].1, "crate::live");
+    }
+
+    #[test]
+    fn block_comment_closes_at_first_terminator_like_rust_compilers() {
+        // Rust/C/JS block comments are NOT nestable: the first `*/` ends the
+        // comment. Everything after it is real code, even if a second `*/`
+        // appears later. (C# is the notable exception; we never scan C#.)
+        let src = "/* outer /* inner */ still code */ let real = 1;\n";
+        let lines = tokenize_source(src);
+        assert!(
+            lines[0].code_only.contains("let real = 1;"),
+            "code after the first */ must be visible: {:?}",
+            lines[0].code_only
+        );
+        assert!(
+            !lines[0].code_only.contains("inner"),
+            "comment interior must be stripped: {:?}",
+            lines[0].code_only
+        );
+    }
+
+    #[test]
+    fn block_comment_spanning_lines_strips_interior_and_restores_after() {
+        let src = "let a = 1;\n/* multi\nline comment */\nlet b = 2;\n";
+        let lines = tokenize_source(src);
+        assert!(lines[0].code_only.contains("let a = 1;"));
+        assert!(lines[1].code_only.is_empty());
+        assert!(lines[2].code_only.is_empty());
+        assert!(lines[3].code_only.contains("let b = 2;"));
+    }
+
+    #[test]
+    fn unwrap_inside_string_literal_is_not_detected() {
+        let src = "let msg = \"call .unwrap() here\";\nlet s = \"a \\\".expect(x)\\\" b\";\n";
+        assert!(find_unwrap_expect_calls(src).is_empty());
+    }
+
+    #[test]
+    fn unwrap_inside_comment_is_not_detected() {
+        let src = "// let x = opt.unwrap();\n/* .expect(panics) */\n";
+        assert!(find_unwrap_expect_calls(src).is_empty());
+    }
+
+    #[test]
+    fn unwrap_in_real_code_is_detected_with_line_numbers() {
+        let src = "fn a() {}\nlet x = opt.unwrap();\nlet y = r.expect(\"nope\");\n";
+        let hits = find_unwrap_expect_calls(src);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].0, 2);
+        assert_eq!(hits[1].0, 3);
+    }
+
+    #[test]
+    fn escaped_quote_in_string_does_not_terminate_early() {
+        let src = "let s = \"he said \\\"hi\\\"\"; let x = ok.unwrap();\n";
+        let lines = tokenize_source(src);
+        // The real code after the string must still be visible.
+        assert!(
+            lines[0].code_only.contains("let x = ok.unwrap();"),
+            "escaped quote must keep string open until the true end: {:?}",
+            lines[0].code_only
+        );
+    }
+
+    #[test]
+    fn char_literal_with_escaped_quote() {
+        let src = "let c = '\\''; let d = 'x';\n";
+        let lines = tokenize_source(src);
+        assert!(
+            lines[0].code_only.contains("let d = "),
+            "escaped char must parse: {:?}",
+            lines[0].code_only
+        );
+    }
+
+    #[test]
+    fn code_after_line_comment_is_stripped() {
+        let src = "let a = 1; // trailing .unwrap() in comment\n";
+        let lines = tokenize_source(src);
+        assert!(!lines[0].code_only.contains("unwrap"));
+        assert!(lines[0].code_only.contains("let a = 1;"));
+    }
+
+    #[test]
+    fn doc_comment_with_import_example_is_not_extracted() {
+        let src = "/// Example: use crate::demo;\npub fn f() {}\n";
+        let imports = extract_imported_modules(src);
+        assert!(imports.is_empty(), "doc-comment example must not count: {imports:?}");
+    }
+
+    #[test]
+    fn cfg_test_imports_are_extracted_like_all_imports() {
+        // Documented behavior: #[cfg(test)] imports are real imports too;
+        // the guard layer decides whether to count them.
+        let src = "#[cfg(test)]\nuse super::inner;\n";
+        let imports = extract_imported_modules(src);
+        assert_eq!(imports.len(), 1);
+        assert_eq!(imports[0].1, "super::inner");
+    }
+
+    // ── count_code_lines ─────────────────────────────────────────────────
+
+    #[test]
+    fn count_code_lines_ignores_comments_strings_and_blank() {
+        let src = "// only comment\n\n/* block */\nlet real = \"a string\";\n";
+        assert_eq!(count_code_lines(src), 1);
+    }
+
+    #[test]
+    fn string_only_line_counts_as_code() {
+        // A line that is *only* a string literal still has a code token.
+        assert_eq!(count_code_lines("\"just a string\";\n"), 1);
+    }
 }

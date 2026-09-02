@@ -3,6 +3,7 @@
 use crate::error::{CodeGuardsError, Result};
 use crate::types::ExceptionEntry;
 use crate::util::{compute_exception_token, get_project_storage_dir};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -63,16 +64,49 @@ impl ProjectExceptions {
         guard_id: &str,
         reason: &str,
     ) -> Result<ExceptionEntry> {
-        let token = compute_exception_token(file, guard_id, reason);
+        let mut attempts = 0;
+        let max_attempts = 10;
+        let mut token;
 
-        // Deduplicate
+        loop {
+            token = compute_exception_token(file, guard_id, reason);
+            
+            // Check for collision with existing tokens
+            if !self.exceptions.iter().any(|e| e.token == token) {
+                // No collision - use this token
+                break;
+            }
+            
+            attempts += 1;
+            if attempts >= max_attempts {
+                // Give up after max attempts to avoid infinite loops
+                return Err(CodeGuardsError::Io {
+                    path: PathBuf::from("token-generation"),
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        format!("Token collision after {} attempts", max_attempts),
+                    ),
+                });
+            }
+            
+            // Add slight variation to inputs to change HMAC output
+            // by appending attempt number to reason
+            let modified_reason = format!("{} (attempt {})", reason, attempts);
+            token = compute_exception_token(file, guard_id, &modified_reason);
+            
+            if !self.exceptions.iter().any(|e| e.token == token) {
+                break;
+            }
+        }
+
+        // Deduplicate (should be redundant but safe)
         self.exceptions.retain(|e| e.token != token);
 
         let entry = ExceptionEntry {
             token: token.clone(),
             file: file.to_path_buf(),
             guard_id: guard_id.to_string(),
-            reason: reason.to_string(),
+            reason: reason.to_string(), // Store original reason, not modified
             granted_at: chrono::Utc::now().to_rfc3339(),
         };
 
@@ -102,6 +136,19 @@ impl ProjectExceptions {
             e.token == token
                 && e.guard_id.eq_ignore_ascii_case(guard_id)
                 && (e.file == file || file.ends_with(&e.file))
+                && !is_token_expired(&e.granted_at)
         })
+    }
+}
+
+/// Checks if a token is older than 30 days.
+fn is_token_expired(granted_at: &str) -> bool {
+    match DateTime::parse_from_rfc3339(granted_at) {
+        Ok(granted_time) => {
+            let now = Utc::now();
+            let thirty_days = chrono::Duration::days(30);
+            granted_time + thirty_days < now
+        }
+        Err(_) => true, // Invalid timestamp = expired
     }
 }

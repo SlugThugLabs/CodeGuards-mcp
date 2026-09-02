@@ -62,10 +62,10 @@ pub fn load_all_tests_and_save_catalog(tests_root: &Path) -> Result<GuardCatalog
             if path.file_name().is_some_and(|n| n == "catalog.json") {
                 continue;
             }
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(def) = serde_json::from_str::<GuardTestDefinition>(&content) {
-                    definitions.push((def, path.to_path_buf()));
-                }
+            if let Ok(content) = fs::read_to_string(path)
+                && let Ok(def) = serde_json::from_str::<GuardTestDefinition>(&content)
+            {
+                definitions.push((def, path.to_path_buf()));
             }
         }
     }
@@ -98,13 +98,13 @@ pub fn create_custom_guard_test(
         GuardCatalog::default()
     };
 
-    if !force {
-        if let Some(reason) = catalog.find_potential_duplicate(&def.name, &def.tags) {
-            return Err(CodeGuardsError::InvalidGuardTest {
-                test_id: def.id.clone(),
-                reason: format!("Duplicate guard prevented: {reason}. Use --force to override."),
-            });
-        }
+    if !force
+        && let Some(reason) = catalog.find_potential_duplicate(&def.name, &def.tags)
+    {
+        return Err(CodeGuardsError::InvalidGuardTest {
+            test_id: def.id.clone(),
+            reason: format!("Duplicate guard prevented: {reason}. Use --force to override."),
+        });
     }
 
     let target_dir = tests_root.join(&def.category);

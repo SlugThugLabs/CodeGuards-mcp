@@ -74,13 +74,16 @@ pub fn get_or_init_secret_salt() -> [u8; 32] {
 }
 
 /// Computes a secure, salted 5-digit verification token for an exception.
+/// Includes file path, guard ID, reason, and current timestamp to prevent replay attacks.
 #[must_use]
 pub fn compute_exception_token(file: &Path, guard_id: &str, reason: &str) -> String {
     let salt = get_or_init_secret_salt();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d").to_string(); // Daily granularity
     let mut hasher = blake3::Hasher::new_keyed(&salt);
     hasher.update(file.to_string_lossy().as_bytes());
     hasher.update(guard_id.as_bytes());
     hasher.update(reason.as_bytes());
+    hasher.update(timestamp.as_bytes());
     let hash = hasher.finalize();
     let bytes = hash.as_bytes();
     let num = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) % 90000 + 10000;

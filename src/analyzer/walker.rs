@@ -16,11 +16,14 @@ pub fn collect_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     for result in walker {
         let entry = result.map_err(|e| CodeGuardsError::Io {
             path: project_root.to_path_buf(),
-            source: std::io::Error::new(std::io::ErrorKind::Other, e),
+            source: std::io::Error::other(e),
         })?;
 
         let path = entry.path();
-        if path.is_file() {
+        if path.is_file()
+            && let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && matches!(ext, "rs" | "py" | "ts" | "js" | "go" | "toml")
+        {
             // Ignore planning and git files
             let path_str = path.to_string_lossy();
             if path_str.contains("/.planning/")
@@ -33,11 +36,7 @@ pub fn collect_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
                 continue;
             }
 
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if matches!(ext, "rs" | "py" | "ts" | "js" | "go" | "toml") {
-                    files.push(path.to_path_buf());
-                }
-            }
+            files.push(path.to_path_buf());
         }
     }
 
@@ -64,12 +63,11 @@ pub fn collect_git_diff_files(project_root: &Path) -> Result<Vec<PathBuf>> {
         if line.len() > 3 {
             let rel_path = line[3..].trim();
             let full_path = project_root.join(rel_path);
-            if full_path.is_file() {
-                if let Some(ext) = full_path.extension().and_then(|e| e.to_str()) {
-                    if matches!(ext, "rs" | "py" | "ts" | "js" | "go" | "toml") {
-                        files.push(full_path);
-                    }
-                }
+            if full_path.is_file()
+                && let Some(ext) = full_path.extension().and_then(|e| e.to_str())
+                && matches!(ext, "rs" | "py" | "ts" | "js" | "go" | "toml")
+            {
+                files.push(full_path);
             }
         }
     }

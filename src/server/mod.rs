@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 const INSTRUCTIONS: &str = "CodeGuards architecture governance and modular test authoring tools.";
+const MAX_REQUEST_SIZE: usize = 1024 * 10; // 10KB limit
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ValidateArchitectureRequest {
@@ -97,6 +98,9 @@ impl CodeGuardsMcpServer {
             .project_path
             .as_deref()
             .unwrap_or(".");
+        if path_str.len() > 1024 {
+            return Err(ErrorData::invalid_params("Project path too long", None));
+        }
         let project_root = match crate::util::validate_safe_path(Path::new(path_str)) {
             Ok(p) => p,
             Err(e) => return Err(ErrorData::invalid_params(format!("Unsafe path: {e}"), None)),
@@ -123,7 +127,7 @@ impl CodeGuardsMcpServer {
             .tests
             .iter()
             .filter(|(_, entry)| {
-                category_filter.map_or(true, |cat| entry.category.starts_with(cat))
+                category_filter.is_none_or(|cat| entry.category.starts_with(cat))
             })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
@@ -139,6 +143,12 @@ impl CodeGuardsMcpServer {
         request: Parameters<CreateGuardTestRequest>,
     ) -> Result<Json<String>, ErrorData> {
         let req = request.0;
+        if req.name.len() > 128 || req.category.len() > 256 || req.summary.len() > 512 {
+            return Err(ErrorData::invalid_params("Request fields too large", None));
+        }
+        if req.tags.len() > 20 || req.aliases.len() > 10 {
+            return Err(ErrorData::invalid_params("Too many tags or aliases", None));
+        }
         let def = GuardTestDefinition {
             id: format!("{}/{}", req.category, req.name),
             name: req.name,
@@ -178,6 +188,9 @@ impl CodeGuardsMcpServer {
         request: Parameters<AddExceptionRequest>,
     ) -> Result<Json<crate::types::ExceptionEntry>, ErrorData> {
         let req = request.0;
+        if req.project_path.len() > 1024 || req.file.len() > 1024 || req.guard_id.len() > 256 || req.reason.len() > 1024 {
+            return Err(ErrorData::invalid_params("Request fields too large", None));
+        }
         let project_path = match crate::util::validate_safe_path(Path::new(&req.project_path)) {
             Ok(p) => p,
             Err(e) => return Err(ErrorData::invalid_params(format!("Unsafe project path: {e}"), None)),

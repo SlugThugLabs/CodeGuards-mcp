@@ -137,21 +137,21 @@ fn evaluate_file_guards(
                     for (source_layer, allowed) in &contract.allowed_dependencies {
                         if rel_str.contains(&format!("src/{source_layer}/")) || rel_str.starts_with(&format!("{source_layer}/")) {
                             for (line_num, import_path) in &imported_modules {
-                                for (target_layer, _) in &contract.allowed_dependencies {
+                                for target_layer in contract.allowed_dependencies.keys() {
                                     if target_layer != source_layer && !allowed.contains(target_layer) {
                                         let target_match = format!("crate::{target_layer}");
-                                        if import_path.contains(&target_match) || import_path.starts_with(target_layer) {
-                                            if !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
-                                                violations.push(Violation {
-                                                    guard_id: guard_entry.id.clone(),
-                                                    file: rel_file.to_path_buf(),
-                                                    line: Some(*line_num),
-                                                    message: format!("Illegal import of '{target_layer}' from '{source_layer}' (import: '{import_path}')"),
-                                                    severity: Severity::Error,
-                                                    fix_suggestion: Some(format!("Module '{source_layer}' cannot depend on '{target_layer}'. Refactor access through declared layer boundary.")),
-                                                    rule_reference: Some(format!(".planning/ARCHITECTURE.md [allowed_dependencies: {source_layer}]")),
-                                                });
-                                            }
+                                        if (import_path.contains(&target_match) || import_path.starts_with(target_layer))
+                                            && !has_valid_exception(file, &guard_entry.id, &content, exceptions)
+                                        {
+                                            violations.push(Violation {
+                                                guard_id: guard_entry.id.clone(),
+                                                file: rel_file.to_path_buf(),
+                                                line: Some(*line_num),
+                                                message: format!("Illegal import of '{target_layer}' from '{source_layer}' (import: '{import_path}')"),
+                                                severity: Severity::Error,
+                                                fix_suggestion: Some(format!("Module '{source_layer}' cannot depend on '{target_layer}'. Refactor access through declared layer boundary.")),
+                                                rule_reference: Some(format!(".planning/ARCHITECTURE.md [allowed_dependencies: {source_layer}]")),
+                                            });
                                         }
                                     }
                                 }
@@ -177,12 +177,12 @@ fn has_valid_exception(
 ) -> bool {
     // Scan up to first 50 lines to account for long license headers
     for line in content.lines().take(50) {
-        if line.contains("codeguard-exception:") && line.contains("token=") {
-            if let Some(token_part) = line.split("token=").nth(1) {
-                let token = token_part.split(';').next().unwrap_or("").trim();
-                if exceptions.is_exception_valid(file, guard_id, token) {
-                    return true;
-                }
+        if line.contains("codeguard-exception:") && line.contains("token=")
+            && let Some(token_part) = line.split("token=").nth(1)
+        {
+            let token = token_part.split(';').next().unwrap_or("").trim();
+            if exceptions.is_exception_valid(file, guard_id, token) {
+                return true;
             }
         }
     }

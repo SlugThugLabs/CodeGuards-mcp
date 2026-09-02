@@ -1,0 +1,38 @@
+/// Computes a BLAKE3 hash of file content with exception headers stripped.
+/// This ensures tokens are bound to actual code content, not the exception comment itself.
+pub fn hash_file_content_excluding_exceptions(content: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    
+    // Strip exception headers from content before hashing
+    for line in content.lines() {
+        if line.contains("codeguard-exception:") {
+            // Skip exception header lines entirely
+            continue;
+        }
+        hasher.update(line.as_bytes());
+        hasher.update(b"\n");
+    }
+    
+    hasher.finalize().to_hex()[..16].to_string()
+}
+
+/// Computes a secure, salted 5-digit verification token for an exception.
+/// Now includes file content hash to prevent token reuse across different file states.
+#[must_use]
+pub fn compute_exception_token(
+    file: &Path,
+    guard_id: &str,
+    reason: &str,
+    content_hash: &str,
+) -> String {
+    let salt = get_or_init_secret_salt();
+    let mut hasher = blake3::Hasher::new_keyed(&salt);
+    hasher.update(file.to_string_lossy().as_bytes());
+    hasher.update(guard_id.as_bytes());
+    hasher.update(reason.as_bytes());
+    hasher.update(content_hash.as_bytes());
+    let hash = hasher.finalize();
+    let bytes = hash.as_bytes();
+    let num = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) % 90000 + 10000;
+    num.to_string()
+}
