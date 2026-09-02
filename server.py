@@ -574,7 +574,14 @@ def main():
     registry = load_plugins()
 
     if not HAS_MCP:
-        log.error("'mcp' package not installed. Run: pip install mcp")
+        log.error(
+            "'mcp' package not installed. Use a local venv, for example:\n"
+            "  /usr/bin/python3.13 -m venv .venv --system-site-packages\n"
+            "  source .venv/bin/activate\n"
+            "  python -m pip install -U pip\n"
+            "Or, if network access is available:\n"
+            "  UV_CACHE_DIR=/tmp/uv-cache uv sync"
+        )
         sys.exit(1)
 
     if args.port:

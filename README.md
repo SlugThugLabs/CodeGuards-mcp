@@ -487,14 +487,18 @@ This README describes the intended product direction and the current mechanics. 
 ## Install
 
 ```bash
-pip install mcp pyyaml
+/usr/bin/python3.13 -m venv .venv --system-site-packages
+source .venv/bin/activate
+python -m pip install -U pip
 ```
 
-For HTTP SSE mode, also install:
+If you have network access, `uv sync` is also supported:
 
 ```bash
-pip install starlette uvicorn
+UV_CACHE_DIR=/tmp/uv-cache uv sync
 ```
+
+`starlette` and `uvicorn` are needed for HTTP/SSE mode. They are already present in the local Python 3.13 environment on this machine; if you are setting up a fresh environment with network access, install them in the same venv as above.
 
 The HTTP dependencies are only imported when `--port` is used. Stdio mode is the default for local MCP clients.
 
@@ -511,14 +515,21 @@ python server.py --port 8000
 # clients connect to http://<host>:8000/sse
 ```
 
+For agent clients, prefer the repo launcher:
+
+```bash
+bash /opt/codeguards-mcp/scripts/codeguards-mcp.sh
+```
+
 ---
 
 ## Verified MCP clients
 
 | Client | Mode | Status | Example install |
 |---|---|---|---|
-| Claude Code | stdio | verified | `claude mcp add codeguards --command "python /path/to/server.py"` |
-| Hermes | stdio | verified | `hermes mcp add codeguards --command "python /path/to/server.py"` |
+| Claude Code | stdio | verified | `claude mcp add codeguards --command "bash /opt/codeguards-mcp/scripts/codeguards-mcp.sh"` |
+| Hermes | stdio | verified | `hermes mcp add codeguards --command "bash /opt/codeguards-mcp/scripts/codeguards-mcp.sh"` |
+| agy | stdio | verified | `agy mcp add codeguards --command "bash /opt/codeguards-mcp/scripts/codeguards-mcp.sh"` |
 | OpenCode | stdio | verified | registered through OpenCode MCP config |
 
 Any stdio-capable MCP client should be able to call the server. Codex and Cursor are design targets, but are not listed as verified here.
