@@ -3,12 +3,16 @@ name = "codeguards-mcp"
 version = "0.2.0"
 edition = "2024"
 publish = false
-license = "MIT"
+license = "PolyForm-Noncommercial-1.0.0"
 default-run = "codeguards-mcp"
 
 [[bin]]
 name = "codeguards-mcp"
 path = "src/main.rs"
+
+[[bench]]
+name = "tokenizer"
+harness = false
 
 [dependencies]
 blake3 = "1.8.7"
@@ -31,3 +35,4 @@ which = "8.0.6"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+criterion = { version = "0.8.2", features = ["html_reports"] }
