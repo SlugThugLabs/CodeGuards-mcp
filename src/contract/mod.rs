@@ -35,6 +35,12 @@ pub struct ValidationResult {
 }
 
 /// Extracts TOML frontmatter delimited by `+++` fences from markdown content.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Contract`] if frontmatter fences are unbalanced  
+/// (unclosed `+++` or no closing `+++`), or [`CodeGuardsError::TomlParse`] if  
+/// the TOML content is malformed.
 pub fn parse_frontmatter(content: &str) -> Result<(ArchitectureContract, &str)> {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("+++") {
@@ -58,6 +64,11 @@ pub fn parse_frontmatter(content: &str) -> Result<(ArchitectureContract, &str)> 
 }
 
 /// Loads and parses .planning/ARCHITECTURE.md from a project directory.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing,  
+/// or [`CodeGuardsError::Io`] if the file cannot be read from disk.
 pub fn load_architecture(project_root: &Path) -> Result<ArchitectureContract> {
     let arch_file = project_root.join(".planning").join("ARCHITECTURE.md");
     if !arch_file.exists() {
@@ -77,6 +88,11 @@ pub fn load_architecture(project_root: &Path) -> Result<ArchitectureContract> {
 }
 
 /// Validates .planning/ARCHITECTURE.md against disk reality and the guard-test catalog.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing or malformed,  
+/// or [`CodeGuardsError::Io`] if the file cannot be read from disk.
 pub fn validate_architecture(
     project_root: &Path,
     catalog: &GuardCatalog,

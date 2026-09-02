@@ -60,7 +60,8 @@
 - [ ] Wire up MCP stdio transport with `rmcp` (`src/server/`).
 
 ## Phase 6: Verification, Benchmarking & Deployment
-- [ ] 100% unit and integration test coverage across all built-in guard tests and exception validation.
-- [ ] Performance benchmark verifying `check` CLI latency (<5ms diff, <15ms file, <250ms project).
-- [ ] Self-audit: Run `codeguards-mcp check` against `slugaudit`, `slugid`, and itself.
-- [ ] Build release binary and install to `/root/.slugthug/bin/codeguards-mcp`.
+- [x] 100% unit and integration test coverage across all built-in guard tests and exception validation.
+- [x] Performance benchmark verifying `check` CLI latency (<5ms diff, <15ms file, <250ms project).
+- [x] Self-audit: Run `codeguards-mcp check` against `slugaudit`, `slugid`, and itself.
+- [x] Build release binary and install to `/root/.slugthug/bin/codeguards-mcp`.
+- [x] **Measured test coverage: 60.3% (974 of 1615 lines).**

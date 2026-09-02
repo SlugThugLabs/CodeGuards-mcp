@@ -1,0 +1,13 @@
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Deny all pedantic lints (300+ additional checks)
+pedantic = { level = "deny", priority = -1 }
+# Additional critical lints for production code
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+module_name_repetitions = "allow"  # Allow in test modules

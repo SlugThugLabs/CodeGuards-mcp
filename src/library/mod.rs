@@ -12,6 +12,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Ensures the global tests directory is initialized and seeded with built-in tests.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Io`] if the tests directory cannot be created or  
+/// if built-in tests cannot be written to disk, or [`CodeGuardsError::TomlParse`]  
+/// if guard definitions cannot be serialized to JSON.
 pub fn ensure_test_library_seeded() -> Result<GuardCatalog> {
     let tests_root = get_tests_dir();
     fs::create_dir_all(&tests_root).map_err(|e| CodeGuardsError::Io {
@@ -50,6 +56,11 @@ pub fn ensure_test_library_seeded() -> Result<GuardCatalog> {
 }
 
 /// Scans the tests directory, loads all definitions, and writes catalog.json.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Io`] if the catalog cannot be written to disk,  
+/// or [`CodeGuardsError::TomlParse`] if guard definitions cannot be serialized to JSON.
 pub fn load_all_tests_and_save_catalog(tests_root: &Path) -> Result<GuardCatalog> {
     let mut definitions = Vec::new();
 
@@ -82,6 +93,12 @@ pub fn load_all_tests_and_save_catalog(tests_root: &Path) -> Result<GuardCatalog
 }
 
 /// Creates a new custom guard test with duplicate prevention.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Io`] if the test file cannot be written to disk,  
+/// [`CodeGuardsError::TomlParse`] if the definition cannot be serialized to JSON,  
+/// or [`CodeGuardsError::InvalidGuardTest`] if a duplicate is detected without --force.
 pub fn create_custom_guard_test(
     tests_root: &Path,
     def: GuardTestDefinition,

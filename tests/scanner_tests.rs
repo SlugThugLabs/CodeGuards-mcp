@@ -61,8 +61,10 @@ fn run() {
         let dirty_file = src_dir.join("dirty.rs");
         fs::write(&dirty_file, "pub fn dirty() { let x = Some(1).unwrap(); }\n").unwrap();
 
-        let mut contract = ArchitectureContract::default();
-        contract.enforce = vec!["no_unwrap".to_string(), "source_limits".to_string()];
+        let contract = ArchitectureContract {
+            enforce: vec!["no_unwrap".to_string(), "source_limits".to_string()],
+            ..Default::default()
+        };
 
         let builtins = codeguards_mcp::library::builtins::get_builtin_guard_tests();
         let catalog = GuardCatalog::from_definitions(

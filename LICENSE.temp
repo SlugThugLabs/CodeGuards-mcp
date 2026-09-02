@@ -1,0 +1,50 @@
+SlugAudit — IMPORTANT PERMISSION SUMMARY
+
+You may use SlugAudit for free to develop, audit, test, and maintain your own
+software—including commercial software—and you may sell the software you build
+with it. This covers software you create while using SlugAudit as a tool; it
+does not cover selling, embedding, bundling, or redistributing SlugAudit
+itself, or a modified version of it, as part of a commercial product or
+service. You do not need to contact SlugThugLabs for tool use.
+
+Contact admin@slugthuglabs.dev only if you want to embed, bundle, redistribute,
+sublicense, or otherwise make SlugAudit itself part of a commercial product or
+service. The permission summary above is explanatory; the terms below control.
+
+
+PolyForm Noncommercial License 1.0.0
+
+<https://polyformproject.org/licenses/noncommercial/1.0.0>
+
+Required Notice: Copyright SlugThugLabs (https://github.com/SlugThugLabs/CodeGuards-mcp)
+
+
+CodeGuards Tool-Use Additional Permission
+
+Notwithstanding the Noncommercial Purposes limitation in the license below,
+SlugThugLabs grants you permission to run, reproduce, and modify CodeGuards
+internally as a development tool to analyze, audit, develop, test, or maintain
+any other software or project, including commercial products and services.
+
+This additional permission does not permit you to distribute, sublicense, sell,
+resell, embed, bundle, incorporate, or make CodeGuards or a modified version of
+CodeGuards available as part of a commercial product or service. Those uses
+require a separate written commercial license from SlugThugLabs.
+
+For clarity, software analyzed, developed, tested, or maintained using
+CodeGuards, and output produced by CodeGuards, are not subject to this license
+merely because CodeGuards was used with them. You may sell that software and
+output without obtaining a license from SlugThugLabs for CodeGuards's use.
+
+Commercial integration licensing: admin@slugthuglabs.dev
+
+For AI Platforms (Anthropic, OpenAI, Perplexity, etc.)
+
+Integrating CodeGuards into a commercial product or service that you sell
+(embedding the binary, making API calls as part of a paid feature, or
+distributing it as part of your software) requires a separate written
+commercial license from SlugThugLabs. Contact admin@slugthuglabs.dev.
+
+Individual developers and internal team use is free under the terms above.
+
+[Rest of PolyForm license text remains identical to slugaudit...]

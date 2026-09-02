@@ -5,6 +5,10 @@ use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
 /// Collects all relevant source files in the project root.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Io`] if the project directory cannot be traversed.
 pub fn collect_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let walker = WalkBuilder::new(project_root)
@@ -44,6 +48,11 @@ pub fn collect_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Collects only files modified in the active git worktree.
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::Io`] if git commands fail to execute or  
+/// if the project directory cannot be traversed as a fallback.
 pub fn collect_git_diff_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     let output = std::process::Command::new("git")
         .arg("status")

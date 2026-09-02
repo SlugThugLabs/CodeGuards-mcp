@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 
 /// Validates that a path does not target sensitive system directories
 /// (e.g., `/proc`, `/sys`, `/dev`, `~/.ssh`, `~/.aws`).
+/// 
+/// # Errors
+/// 
+/// Returns [`CodeGuardsError::SandboxViolation`] if the path escapes the project root.
 pub fn validate_safe_path(path: &Path) -> Result<PathBuf> {
     let canonical = match path.canonicalize() {
         Ok(p) => p,
@@ -106,6 +110,7 @@ pub fn get_tests_dir() -> PathBuf {
 }
 
 /// Returns the project-specific storage directory: ~/.slugthug/codeguards/projects/<project_id>/
+#[must_use]
 pub fn get_project_storage_dir(project_path: &Path) -> PathBuf {
     let hash = hash_project_path(project_path);
     let name = project_path

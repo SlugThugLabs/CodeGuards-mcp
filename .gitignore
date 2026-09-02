@@ -1,18 +1,1 @@
-__pycache__/
-*.pyc
-.env
-.venv
-venv/
-*.egg-info/
-dist/
-build/
-
-# Runtime / test artifacts
-.coverage
-.codeguards/
-.pytest_cache/
-
-# Tool artifacts (regenerated index, not docs)
-.planning/slugaudit/
-
-\n# Tool caches in .planning\n.planning/*/*.db\n.planning/*/*.db-wal\n.planning/*/*.db-shm\n
+/target/

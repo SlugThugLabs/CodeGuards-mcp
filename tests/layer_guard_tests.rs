@@ -45,9 +45,11 @@ from database import connection
         allowed.insert("transport".to_string(), vec!["domain".to_string()]); // storage not allowed!
         allowed.insert("storage".to_string(), vec![]);
 
-        let mut contract = ArchitectureContract::default();
-        contract.enforce = vec!["layer_dependencies".to_string()];
-        contract.allowed_dependencies = allowed;
+        let contract = ArchitectureContract {
+            enforce: vec!["layer_dependencies".to_string()],
+            allowed_dependencies: allowed,
+            ..Default::default()
+        };
 
         let catalog = codeguards_mcp::library::builtins::get_builtin_guard_tests();
         let catalog = GuardCatalog::from_definitions(
@@ -58,7 +60,7 @@ from database import connection
         );
 
         let exceptions = ProjectExceptions::default();
-        let report = run_guard_checks(dir.path(), &[file.clone()], &contract, &catalog, &exceptions).unwrap();
+        let report = run_guard_checks(dir.path(), std::slice::from_ref(&file), &contract, &catalog, &exceptions).unwrap();
 
         assert!(!report.is_pass());
         assert_eq!(report.violations.len(), 1);

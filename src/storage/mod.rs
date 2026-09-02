@@ -18,6 +18,10 @@ pub struct ProjectExceptions {
 
 impl ProjectExceptions {
     /// Loads the exceptions registry for a given project, or empty if not present.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be read from disk.
     pub fn load(project_path: &Path) -> Result<Self> {
         let storage_dir = get_project_storage_dir(project_path);
         let file_path = storage_dir.join("exceptions.json");
@@ -40,6 +44,10 @@ impl ProjectExceptions {
     }
 
     /// Saves the exceptions registry to ~/.slugthug/codeguards/projects/<id>/exceptions.json.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be written to disk.
     pub fn save(&self) -> Result<PathBuf> {
         let storage_dir = get_project_storage_dir(&self.project_path);
         fs::create_dir_all(&storage_dir).map_err(|e| CodeGuardsError::Io {
@@ -58,6 +66,11 @@ impl ProjectExceptions {
     }
 
     /// Adds a user-authorized exception and returns the generated token.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns [`CodeGuardsError::Io`] if the token generation exceeds maximum retries,  
+    /// or if the exceptions file cannot be written to disk.
     pub fn add_exception(
         &mut self,
         file: &Path,
@@ -117,6 +130,10 @@ impl ProjectExceptions {
     }
 
     /// Revokes an exception by token.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be written to disk.
     pub fn revoke(&mut self, token: &str) -> Result<bool> {
         let before_len = self.exceptions.len();
         self.exceptions.retain(|e| e.token != token);
