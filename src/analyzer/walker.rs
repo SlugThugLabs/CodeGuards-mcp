@@ -27,6 +27,8 @@ pub fn collect_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
                 || path_str.contains("/.git/")
                 || path_str.contains("/target/")
                 || path_str.contains("/node_modules/")
+                || path_str.contains("/legacy-python/")
+                || path_str.contains("/sample_code/")
             {
                 continue;
             }

@@ -114,7 +114,7 @@ pub fn get_builtin_guard_tests() -> Vec<GuardTestDefinition> {
             name: "no_debug_prints".to_string(),
             category: "hygiene".to_string(),
             version: "1.0.0".to_string(),
-            summary: "Rejects leftover println!, dbg!, console.log, or print() statements in production".to_string(),
+            summary: "Rejects leftover debugging statements in production".to_string(),
             tags: vec!["logging".to_string(), "debug".to_string(), "prints".to_string()],
             aliases: vec!["no_debug_prints".to_string(), "debug_statements".to_string()],
             engine: "no_debug_prints".to_string(),

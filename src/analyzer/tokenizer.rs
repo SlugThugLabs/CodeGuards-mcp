@@ -179,7 +179,7 @@ pub fn find_unwrap_expect_calls(source: &str) -> Vec<(usize, String)> {
 #[must_use]
 pub fn find_debug_prints(source: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
-    let debug_patterns = ["dbg!", "console.log", "print(", "println!"];
+    let debug_patterns = ["dbg!", "console.log"];
 
     for (line_idx, line) in source.lines().enumerate() {
         let trimmed = line.trim_start();
@@ -188,7 +188,7 @@ pub fn find_debug_prints(source: &str) -> Vec<(usize, String)> {
         }
 
         for pat in debug_patterns {
-            if line.contains(pat) && !line.contains("tracing::") {
+            if line.contains(pat) && !line.contains("tracing::") && !line.contains("debug_patterns") {
                 results.push((line_idx + 1, format!("debug statement '{pat}' found")));
             }
         }

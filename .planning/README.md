@@ -13,3 +13,4 @@ and are gitignored; everything else here is committed.
 - `design_v0.2.md` — v0.2 "architecture-as-source-of-truth" design (PARKED).
 - `ANTI_DRIFT.md` — design for token-protected guard/architecture files.
 - `THINKING_PAUSE.md` — deliberation-signaling UX principle (implemented in server.py).
+- `TOOL_SPLIT.md` — DRAFT: split into authoring + enforcement tools over one engine.
