@@ -51,10 +51,7 @@ pub fn collect_git_diff_files(project_root: &Path) -> Result<Vec<PathBuf>> {
         .current_dir(project_root)
         .output();
 
-    let output = match output {
-        Ok(out) => out,
-        Err(_) => return collect_source_files(project_root),
-    };
+    let Ok(output) = output else { return collect_source_files(project_root) };
 
     let mut files = Vec::new();
     let text = String::from_utf8_lossy(&output.stdout);

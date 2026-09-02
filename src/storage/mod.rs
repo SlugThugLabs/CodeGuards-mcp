@@ -84,14 +84,14 @@ impl ProjectExceptions {
                     path: PathBuf::from("token-generation"),
                     source: std::io::Error::new(
                         std::io::ErrorKind::AlreadyExists,
-                        format!("Token collision after {} attempts", max_attempts),
+                        format!("Token collision after {max_attempts} attempts"),
                     ),
                 });
             }
             
             // Add slight variation to inputs to change HMAC output
             // by appending attempt number to reason
-            let modified_reason = format!("{} (attempt {})", reason, attempts);
+            let modified_reason = format!("{reason} (attempt {attempts})");
             token = compute_exception_token(file, guard_id, &modified_reason);
             
             if !self.exceptions.iter().any(|e| e.token == token) {

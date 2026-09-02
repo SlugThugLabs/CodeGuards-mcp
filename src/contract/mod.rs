@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn frontmatter_parses_valid_toml_and_returns_body() {
         let content = "+++\nmodules = [\"analyzer\", \"server\"]\nenforce = [\"no-unwrap\"]\n+++\n# Body text here\n";
-        let (contract, body) = parse_frontmatter(content).expect("valid frontmatter");
+        let (contract, body) = parse_frontmatter(content).expect("valid frontmatter should parse successfully");
         assert_eq!(contract.modules, vec!["analyzer", "server"]);
         assert_eq!(contract.enforce, vec!["no-unwrap"]);
         assert!(body.contains("Body text here"));

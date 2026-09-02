@@ -54,12 +54,11 @@ pub fn get_or_init_secret_salt() -> [u8; 32] {
     let home = get_slugthug_home();
     let key_path = home.join(".secret.key");
 
-    if let Ok(bytes) = fs::read(&key_path) {
-        if bytes.len() == 32 {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes);
-            return arr;
-        }
+    if let Ok(bytes) = fs::read(&key_path)
+        && bytes.len() == 32 {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&bytes);
+        return arr;
     }
 
     let _ = fs::create_dir_all(&home);

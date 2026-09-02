@@ -1,4 +1,4 @@
-//! CodeGuards library root.
+//! `CodeGuards` library root.
 
 pub mod analyzer;
 pub mod contract;

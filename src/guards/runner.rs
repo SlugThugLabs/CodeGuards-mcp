@@ -29,7 +29,8 @@ pub fn run_guard_checks(
         .flat_map(|file| evaluate_file_guards(project_root, file, contract, catalog, exceptions))
         .collect();
 
-    let duration_ms = start.elapsed().as_millis() as u64;
+    let duration_ms = u64::try_from(start.elapsed().as_millis())
+        .expect("duration should fit in u64");
 
     Ok(GuardReport {
         project_root: project_root.to_path_buf(),
@@ -50,10 +51,7 @@ fn evaluate_file_guards(
     exceptions: &ProjectExceptions,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
-    let content = match fs::read_to_string(file) {
-        Ok(c) => c,
-        Err(_) => return violations,
-    };
+    let Ok(content) = fs::read_to_string(file) else { return violations };
 
     let rel_file = file.strip_prefix(project_root).unwrap_or(file);
     let rel_str = rel_file.to_string_lossy();
@@ -61,20 +59,18 @@ fn evaluate_file_guards(
 
     // Iterate through all active rules declared in contract.enforce
     for rule_name in &contract.enforce {
-        let guard_entry = match catalog.resolve(rule_name) {
-            Some(entry) => entry,
-            None => continue,
-        };
+        let Some(guard_entry) = catalog.resolve(rule_name) else { continue };
 
         match guard_entry.id.as_str() {
             // ── Complexity: source_limits ──
             "complexity/source-limits" => {
-                let max_lines = contract
-                    .guard_settings
-                    .get("source_limits")
-                    .and_then(|v| v.get("max_lines"))
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(400) as usize;
+                let max_lines = usize::try_from(contract
+                  .guard_settings
+                  .get("source_limits")
+                  .and_then(|v| v.get("max_lines"))
+                  .and_then(|v| v.as_u64())
+                  .unwrap_or(400))
+                  .expect("max_lines should fit in usize");
 
                 let code_lines = count_code_lines(&content);
                 if code_lines > max_lines && !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
