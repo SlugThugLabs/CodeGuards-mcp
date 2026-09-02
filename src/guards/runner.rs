@@ -1,6 +1,8 @@
 //! Parallel guard execution runner.
+//!
+//! Dynamically routes active contract rules through the guard-tests catalog.
 
-use crate::analyzer::{count_code_lines, find_debug_prints, find_unwrap_expect_calls};
+use crate::analyzer::{count_code_lines, extract_imported_modules, find_debug_prints, find_unwrap_expect_calls};
 use crate::contract::ArchitectureContract;
 use crate::error::Result;
 use crate::library::catalog::GuardCatalog;
@@ -39,12 +41,12 @@ pub fn run_guard_checks(
     })
 }
 
-/// Evaluates a single file against active contract rules and built-in guards.
+/// Evaluates a single file against active contract rules and catalog definitions.
 fn evaluate_file_guards(
     project_root: &Path,
     file: &Path,
     contract: &ArchitectureContract,
-    _catalog: &GuardCatalog,
+    catalog: &GuardCatalog,
     exceptions: &ProjectExceptions,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
@@ -57,90 +59,109 @@ fn evaluate_file_guards(
     let rel_str = rel_file.to_string_lossy();
     let is_test = rel_str.contains("test") || rel_str.contains("tests/");
 
-    // 1. Complexity: source_limits
-    if contract.enforce.iter().any(|g| g == "source_limits" || g == "small_files_limit") {
-        let max_lines = contract
-            .guard_settings
-            .get("source_limits")
-            .and_then(|v| v.get("max_lines"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(400) as usize;
+    // Iterate through all active rules declared in contract.enforce
+    for rule_name in &contract.enforce {
+        let guard_entry = match catalog.resolve(rule_name) {
+            Some(entry) => entry,
+            None => continue,
+        };
 
-        let code_lines = count_code_lines(&content);
-        if code_lines > max_lines && !has_valid_exception(file, "complexity/source-limits", &content, exceptions) {
-            violations.push(Violation {
-                guard_id: "complexity/source-limits".to_string(),
-                file: rel_file.to_path_buf(),
-                line: Some(1),
-                message: format!("File has {code_lines} code lines (exceeds limit of {max_lines})"),
-                severity: Severity::Error,
-                fix_suggestion: Some("Split module into smaller cohesive submodules under a directory module.".to_string()),
-                rule_reference: Some(".planning/ARCHITECTURE.md [enforce: source_limits]".to_string()),
-            });
-        }
-    }
+        match guard_entry.id.as_str() {
+            // ── Complexity: source_limits ──
+            "complexity/source-limits" => {
+                let max_lines = contract
+                    .guard_settings
+                    .get("source_limits")
+                    .and_then(|v| v.get("max_lines"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(400) as usize;
 
-    // 2. Language/Rust: no_unwrap
-    if !is_test && contract.enforce.iter().any(|g| g == "no_unwrap" || g == "forbid_unwrap") {
-        let unwraps = find_unwrap_expect_calls(&content);
-        for (line, msg) in unwraps {
-            if !has_valid_exception(file, "languages/rust/no-unwrap", &content, exceptions) {
-                violations.push(Violation {
-                    guard_id: "languages/rust/no-unwrap".to_string(),
-                    file: rel_file.to_path_buf(),
-                    line: Some(line),
-                    message: msg,
-                    severity: Severity::Error,
-                    fix_suggestion: Some("Use '?' error propagation with thiserror or return a Result<T, E>.".to_string()),
-                    rule_reference: Some(".planning/ARCHITECTURE.md [enforce: no_unwrap]".to_string()),
-                });
+                let code_lines = count_code_lines(&content);
+                if code_lines > max_lines && !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
+                    violations.push(Violation {
+                        guard_id: guard_entry.id.clone(),
+                        file: rel_file.to_path_buf(),
+                        line: Some(1),
+                        message: format!("File has {code_lines} code lines (exceeds limit of {max_lines})"),
+                        severity: Severity::Error,
+                        fix_suggestion: Some(guard_entry.summary.clone()),
+                        rule_reference: Some(format!(".planning/ARCHITECTURE.md [enforce: {rule_name}]")),
+                    });
+                }
             }
-        }
-    }
 
-    // 3. Hygiene: no_debug_prints
-    if !is_test && contract.enforce.iter().any(|g| g == "no_debug_prints") {
-        let prints = find_debug_prints(&content);
-        for (line, msg) in prints {
-            if !has_valid_exception(file, "hygiene/no-debug-prints", &content, exceptions) {
-                violations.push(Violation {
-                    guard_id: "hygiene/no-debug-prints".to_string(),
-                    file: rel_file.to_path_buf(),
-                    line: Some(line),
-                    message: msg,
-                    severity: Severity::Error,
-                    fix_suggestion: Some("Replace debug print with structured tracing::info/debug or remove before committing.".to_string()),
-                    rule_reference: Some(".planning/ARCHITECTURE.md [enforce: no_debug_prints]".to_string()),
-                });
+            // ── Language/Rust: no_unwrap ──
+            "languages/rust/no-unwrap" => {
+                if !is_test && rel_str.ends_with(".rs") {
+                    let unwraps = find_unwrap_expect_calls(&content);
+                    for (line, msg) in unwraps {
+                        if !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
+                            violations.push(Violation {
+                                guard_id: guard_entry.id.clone(),
+                                file: rel_file.to_path_buf(),
+                                line: Some(line),
+                                message: msg,
+                                severity: Severity::Error,
+                                fix_suggestion: Some("Use '?' error propagation with thiserror or return a Result<T, E>.".to_string()),
+                                rule_reference: Some(format!(".planning/ARCHITECTURE.md [enforce: {rule_name}]")),
+                            });
+                        }
+                    }
+                }
             }
-        }
-    }
 
-    // 4. Structural: layer_dependencies
-    if !contract.allowed_dependencies.is_empty() {
-        for (source_layer, allowed) in &contract.allowed_dependencies {
-            if rel_str.contains(&format!("src/{source_layer}/")) || rel_str.starts_with(&format!("{source_layer}/")) {
-                for (line_idx, line) in content.lines().enumerate() {
-                    for (target_layer, _) in &contract.allowed_dependencies {
-                        if target_layer != source_layer && !allowed.contains(target_layer) {
-                            let forbidden_pat = format!("crate::{target_layer}");
-                            if line.contains(&forbidden_pat) && !line.trim_start().starts_with("//") {
-                                if !has_valid_exception(file, "structural/layer-dependencies", &content, exceptions) {
-                                    violations.push(Violation {
-                                        guard_id: "structural/layer-dependencies".to_string(),
-                                        file: rel_file.to_path_buf(),
-                                        line: Some(line_idx + 1),
-                                        message: format!("Illegal import of '{target_layer}' from '{source_layer}'"),
-                                        severity: Severity::Error,
-                                        fix_suggestion: Some(format!("Module '{source_layer}' cannot depend on '{target_layer}'. Refactor access through declared layer boundary.")),
-                                        rule_reference: Some(format!(".planning/ARCHITECTURE.md [allowed_dependencies: {source_layer}]")),
-                                    });
+            // ── Hygiene: no_debug_prints ──
+            "hygiene/no-debug-prints" => {
+                if !is_test {
+                    let prints = find_debug_prints(&content);
+                    for (line, msg) in prints {
+                        if !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
+                            violations.push(Violation {
+                                guard_id: guard_entry.id.clone(),
+                                file: rel_file.to_path_buf(),
+                                line: Some(line),
+                                message: msg,
+                                severity: Severity::Error,
+                                fix_suggestion: Some("Replace debug print with structured tracing::info/debug or remove before committing.".to_string()),
+                                rule_reference: Some(format!(".planning/ARCHITECTURE.md [enforce: {rule_name}]")),
+                            });
+                        }
+                    }
+                }
+            }
+
+            // ── Structural: layer_dependencies ──
+            "structural/layer-dependencies" => {
+                if !contract.allowed_dependencies.is_empty() {
+                    let imported_modules = extract_imported_modules(&content);
+                    for (source_layer, allowed) in &contract.allowed_dependencies {
+                        if rel_str.contains(&format!("src/{source_layer}/")) || rel_str.starts_with(&format!("{source_layer}/")) {
+                            for (line_num, import_path) in &imported_modules {
+                                for (target_layer, _) in &contract.allowed_dependencies {
+                                    if target_layer != source_layer && !allowed.contains(target_layer) {
+                                        let target_match = format!("crate::{target_layer}");
+                                        if import_path.contains(&target_match) || import_path.starts_with(target_layer) {
+                                            if !has_valid_exception(file, &guard_entry.id, &content, exceptions) {
+                                                violations.push(Violation {
+                                                    guard_id: guard_entry.id.clone(),
+                                                    file: rel_file.to_path_buf(),
+                                                    line: Some(*line_num),
+                                                    message: format!("Illegal import of '{target_layer}' from '{source_layer}' (import: '{import_path}')"),
+                                                    severity: Severity::Error,
+                                                    fix_suggestion: Some(format!("Module '{source_layer}' cannot depend on '{target_layer}'. Refactor access through declared layer boundary.")),
+                                                    rule_reference: Some(format!(".planning/ARCHITECTURE.md [allowed_dependencies: {source_layer}]")),
+                                                });
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            _ => {}
         }
     }
 
@@ -154,9 +175,9 @@ fn has_valid_exception(
     content: &str,
     exceptions: &ProjectExceptions,
 ) -> bool {
-    for line in content.lines().take(15) {
+    // Scan up to first 50 lines to account for long license headers
+    for line in content.lines().take(50) {
         if line.contains("codeguard-exception:") && line.contains("token=") {
-            // Extract token
             if let Some(token_part) = line.split("token=").nth(1) {
                 let token = token_part.split(';').next().unwrap_or("").trim();
                 if exceptions.is_exception_valid(file, guard_id, token) {

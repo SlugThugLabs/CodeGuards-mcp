@@ -14,7 +14,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, Json};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -97,7 +97,10 @@ impl CodeGuardsMcpServer {
             .project_path
             .as_deref()
             .unwrap_or(".");
-        let project_root = PathBuf::from(path_str);
+        let project_root = match crate::util::validate_safe_path(Path::new(path_str)) {
+            Ok(p) => p,
+            Err(e) => return Err(ErrorData::invalid_params(format!("Unsafe path: {e}"), None)),
+        };
         let catalog_guard = self.catalog.lock().await;
 
         match validate_architecture(&project_root, &catalog_guard) {
@@ -175,7 +178,10 @@ impl CodeGuardsMcpServer {
         request: Parameters<AddExceptionRequest>,
     ) -> Result<Json<crate::types::ExceptionEntry>, ErrorData> {
         let req = request.0;
-        let project_path = PathBuf::from(&req.project_path);
+        let project_path = match crate::util::validate_safe_path(Path::new(&req.project_path)) {
+            Ok(p) => p,
+            Err(e) => return Err(ErrorData::invalid_params(format!("Unsafe project path: {e}"), None)),
+        };
         let mut exceptions = ProjectExceptions::load(&project_path).unwrap_or_default();
 
         match exceptions.add_exception(Path::new(&req.file), &req.guard_id, &req.reason) {

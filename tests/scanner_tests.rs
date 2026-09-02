@@ -40,8 +40,8 @@ fn test_unwraps() {
     fn test_tokenizer_debug_print_detection() {
         let code = r#"
 fn run() {
-    // println!("ignored");
-    println!("real debug print");
+    // dbg!("ignored");
+    console.log("real debug print");
     dbg!(x);
 }
 "#;
@@ -64,11 +64,16 @@ fn run() {
         let mut contract = ArchitectureContract::default();
         contract.enforce = vec!["no_unwrap".to_string(), "source_limits".to_string()];
 
-        let catalog = GuardCatalog::default();
+        let builtins = codeguards_mcp::library::builtins::get_builtin_guard_tests();
+        let catalog = GuardCatalog::from_definitions(
+            &builtins
+                .into_iter()
+                .map(|d| (d, std::path::PathBuf::new()))
+                .collect::<Vec<_>>(),
+        );
         let exceptions = ProjectExceptions::default();
 
-        let files = vec![clean_file.clone(), dirty_file.clone()];
-        let report = run_guard_checks(dir.path(), &files, &contract, &catalog, &exceptions).unwrap();
+        let report = run_guard_checks(dir.path(), &[clean_file, dirty_file], &contract, &catalog, &exceptions).unwrap();
 
         assert!(!report.is_pass());
         assert_eq!(report.violations.len(), 1);

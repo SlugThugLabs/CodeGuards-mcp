@@ -1,6 +1,7 @@
 //! Sandboxing and utility functions.
 
 use crate::error::{CodeGuardsError, Result};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Validates that a path does not target sensitive system directories
@@ -8,32 +9,28 @@ use std::path::{Path, PathBuf};
 pub fn validate_safe_path(path: &Path) -> Result<PathBuf> {
     let canonical = match path.canonicalize() {
         Ok(p) => p,
-        Err(_) => {
-            // If path doesn't exist yet, normalize without canonicalize
-            path.to_path_buf()
-        }
+        Err(_) => path.to_path_buf(),
     };
 
     let path_str = canonical.to_string_lossy();
 
-    // Check blacklisted prefix patterns
-    let blacklisted = [
-        "/proc",
-        "/sys",
-        "/dev",
-        "/.ssh",
-        "/.aws",
-        "/.gnupg",
-        "/etc/shadow",
-        "/etc/sudoers",
-    ];
-
-    for prefix in blacklisted {
-        if path_str.contains(prefix) {
-            return Err(CodeGuardsError::SandboxViolation {
-                path: canonical,
-            });
+    // Check strict component boundaries rather than substring
+    for comp in canonical.components() {
+        if let std::path::Component::Normal(c) = comp {
+            let name = c.to_string_lossy();
+            if name == ".ssh" || name == ".aws" || name == ".gnupg" {
+                return Err(CodeGuardsError::SandboxViolation { path: canonical });
+            }
         }
+    }
+
+    if path_str.starts_with("/proc")
+        || path_str.starts_with("/sys")
+        || path_str.starts_with("/dev")
+        || path_str.starts_with("/etc/shadow")
+        || path_str.starts_with("/etc/sudoers")
+    {
+        return Err(CodeGuardsError::SandboxViolation { path: canonical });
     }
 
     Ok(canonical)
@@ -51,10 +48,36 @@ pub fn hash_project_path(project_path: &Path) -> String {
     hash.to_hex()[..12].to_string()
 }
 
-/// Computes a deterministic 5-digit verification token for an exception.
+/// Retrieves or initializes a local private HMAC salt secret in ~/.slugthug/.secret.key
+/// ensuring AI agents cannot compute exception tokens in memory without access.
+pub fn get_or_init_secret_salt() -> [u8; 32] {
+    let home = get_slugthug_home();
+    let key_path = home.join(".secret.key");
+
+    if let Ok(bytes) = fs::read(&key_path) {
+        if bytes.len() == 32 {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&bytes);
+            return arr;
+        }
+    }
+
+    let _ = fs::create_dir_all(&home);
+    let random_key = uuid::Uuid::new_v4();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(random_key.as_bytes());
+    hasher.update(b"codeguards-salt-key");
+    let key_bytes = *hasher.finalize().as_bytes();
+
+    let _ = fs::write(&key_path, key_bytes);
+    key_bytes
+}
+
+/// Computes a secure, salted 5-digit verification token for an exception.
 #[must_use]
 pub fn compute_exception_token(file: &Path, guard_id: &str, reason: &str) -> String {
-    let mut hasher = blake3::Hasher::new();
+    let salt = get_or_init_secret_salt();
+    let mut hasher = blake3::Hasher::new_keyed(&salt);
     hasher.update(file.to_string_lossy().as_bytes());
     hasher.update(guard_id.as_bytes());
     hasher.update(reason.as_bytes());

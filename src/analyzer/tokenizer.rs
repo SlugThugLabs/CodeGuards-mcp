@@ -1,7 +1,9 @@
-//! Pure-Rust tokenizer that strips comments, docstrings, and string literals.
+//! Unified pure-Rust code scanner and tokenizer.
+//!
+//! Strips comments, docstrings, and string literals in a single clean pass.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TokenizerState {
+enum LexState {
     Normal,
     LineComment,
     BlockComment { depth: usize },
@@ -9,190 +11,170 @@ enum TokenizerState {
     CharLiteral { escaped: bool },
 }
 
-/// Counts non-comment, non-empty code lines in source text.
-#[must_use]
-pub fn count_code_lines(source: &str) -> usize {
-    let mut state = TokenizerState::Normal;
-    let mut code_lines = 0;
+/// A line in a source file, split into raw content and code-only content (comments/strings stripped).
+#[derive(Debug, Clone)]
+pub struct StrippedLine {
+    pub line_number: usize,
+    pub raw: String,
+    pub code_only: String,
+    pub has_code_token: bool,
+}
 
-    for line in source.lines() {
-        let mut has_code_token = false;
-        let bytes = line.as_bytes();
+/// Tokenizes source text and strips all non-executable tokens (comments, strings).
+pub fn tokenize_source(source: &str) -> Vec<StrippedLine> {
+    let mut state = LexState::Normal;
+    let mut lines = Vec::new();
+
+    for (idx, raw_line) in source.lines().enumerate() {
+        let mut code_buf = String::new();
+        let bytes = raw_line.as_bytes();
         let mut i = 0;
+        let mut has_code = false;
 
         while i < bytes.len() {
             let b = bytes[i];
             let next = bytes.get(i + 1).copied();
 
             match state {
-                TokenizerState::Normal => {
+                LexState::Normal => {
                     if b == b'/' && next == Some(b'/') {
-                        state = TokenizerState::LineComment;
+                        state = LexState::LineComment;
                         break;
                     } else if b == b'/' && next == Some(b'*') {
-                        state = TokenizerState::BlockComment { depth: 1 };
+                        state = LexState::BlockComment { depth: 1 };
                         i += 2;
                         continue;
                     } else if b == b'"' {
-                        state = TokenizerState::StringLiteral { escaped: false };
-                        has_code_token = true;
+                        state = LexState::StringLiteral { escaped: false };
+                        has_code = true;
                     } else if b == b'\'' {
-                        state = TokenizerState::CharLiteral { escaped: false };
-                        has_code_token = true;
-                    } else if !b.is_ascii_whitespace() {
-                        has_code_token = true;
+                        state = LexState::CharLiteral { escaped: false };
+                        has_code = true;
+                    } else {
+                        if !b.is_ascii_whitespace() {
+                            has_code = true;
+                        }
+                        code_buf.push(b as char);
                     }
                 }
-                TokenizerState::LineComment => {
-                    break;
-                }
-                TokenizerState::BlockComment { depth } => {
+                LexState::LineComment => break,
+                LexState::BlockComment { depth } => {
                     if b == b'/' && next == Some(b'*') {
-                        state = TokenizerState::BlockComment { depth: depth + 1 };
+                        state = LexState::BlockComment { depth: depth + 1 };
                         i += 2;
                         continue;
                     } else if b == b'*' && next == Some(b'/') {
                         if depth == 1 {
-                            state = TokenizerState::Normal;
+                            state = LexState::Normal;
                         } else {
-                            state = TokenizerState::BlockComment { depth: depth - 1 };
+                            state = LexState::BlockComment { depth: depth - 1 };
                         }
                         i += 2;
                         continue;
                     }
                 }
-                TokenizerState::StringLiteral { escaped } => {
+                LexState::StringLiteral { escaped } => {
                     if escaped {
-                        state = TokenizerState::StringLiteral { escaped: false };
+                        state = LexState::StringLiteral { escaped: false };
                     } else if b == b'\\' {
-                        state = TokenizerState::StringLiteral { escaped: true };
+                        state = LexState::StringLiteral { escaped: true };
                     } else if b == b'"' {
-                        state = TokenizerState::Normal;
+                        state = LexState::Normal;
                     }
                 }
-                TokenizerState::CharLiteral { escaped } => {
+                LexState::CharLiteral { escaped } => {
                     if escaped {
-                        state = TokenizerState::CharLiteral { escaped: false };
+                        state = LexState::CharLiteral { escaped: false };
                     } else if b == b'\\' {
-                        state = TokenizerState::CharLiteral { escaped: true };
+                        state = LexState::CharLiteral { escaped: true };
                     } else if b == b'\'' {
-                        state = TokenizerState::Normal;
+                        state = LexState::Normal;
                     }
                 }
             }
             i += 1;
         }
 
-        if state == TokenizerState::LineComment {
-            state = TokenizerState::Normal;
+        if state == LexState::LineComment {
+            state = LexState::Normal;
         }
 
-        if has_code_token {
-            code_lines += 1;
-        }
+        lines.push(StrippedLine {
+            line_number: idx + 1,
+            raw: raw_line.to_string(),
+            code_only: code_buf,
+            has_code_token: has_code,
+        });
     }
 
-    code_lines
+    lines
+}
+
+/// Counts non-comment, non-empty code lines in source text.
+#[must_use]
+pub fn count_code_lines(source: &str) -> usize {
+    tokenize_source(source)
+        .into_iter()
+        .filter(|l| l.has_code_token)
+        .count()
 }
 
 /// Checks if a source file contains unwrap() or expect() calls outside comments and strings.
 #[must_use]
 pub fn find_unwrap_expect_calls(source: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
-    let mut state = TokenizerState::Normal;
+    for line in tokenize_source(source) {
+        if line.code_only.contains(".unwrap()") {
+            results.push((line.line_number, "bare .unwrap() call detected".to_string()));
+        } else if line.code_only.contains(".expect(") {
+            results.push((line.line_number, "bare .expect() call detected".to_string()));
+        }
+    }
+    results
+}
 
-    for (line_idx, line) in source.lines().enumerate() {
-        let line_num = line_idx + 1;
-        let bytes = line.as_bytes();
-        let mut i = 0;
-        let mut clean_line = String::new();
+/// Checks for debug prints like dbg!, console.log outside comments/strings.
+#[must_use]
+pub fn find_debug_prints(source: &str) -> Vec<(usize, String)> {
+    let mut results = Vec::new();
+    let debug_patterns = ["dbg!", "console.log"];
 
-        while i < bytes.len() {
-            let b = bytes[i];
-            let next = bytes.get(i + 1).copied();
-
-            match state {
-                TokenizerState::Normal => {
-                    if b == b'/' && next == Some(b'/') {
-                        break;
-                    } else if b == b'/' && next == Some(b'*') {
-                        state = TokenizerState::BlockComment { depth: 1 };
-                        i += 2;
-                        continue;
-                    } else if b == b'"' {
-                        state = TokenizerState::StringLiteral { escaped: false };
-                    } else if b == b'\'' {
-                        state = TokenizerState::CharLiteral { escaped: false };
-                    } else {
-                        clean_line.push(b as char);
-                    }
-                }
-                TokenizerState::LineComment => break,
-                TokenizerState::BlockComment { depth } => {
-                    if b == b'*' && next == Some(b'/') {
-                        if depth == 1 {
-                            state = TokenizerState::Normal;
-                        } else {
-                            state = TokenizerState::BlockComment { depth: depth - 1 };
-                        }
-                        i += 2;
-                        continue;
-                    }
-                }
-                TokenizerState::StringLiteral { escaped } => {
-                    if escaped {
-                        state = TokenizerState::StringLiteral { escaped: false };
-                    } else if b == b'\\' {
-                        state = TokenizerState::StringLiteral { escaped: true };
-                    } else if b == b'"' {
-                        state = TokenizerState::Normal;
-                    }
-                }
-                TokenizerState::CharLiteral { escaped } => {
-                    if escaped {
-                        state = TokenizerState::CharLiteral { escaped: false };
-                    } else if b == b'\\' {
-                        state = TokenizerState::CharLiteral { escaped: true };
-                    } else if b == b'\'' {
-                        state = TokenizerState::Normal;
-                    }
-                }
+    for line in tokenize_source(source) {
+        for pat in debug_patterns {
+            if line.code_only.contains(pat) && !line.raw.contains("tracing::") {
+                results.push((line.line_number, format!("debug statement '{pat}' found")));
             }
-            i += 1;
-        }
-
-        if state == TokenizerState::LineComment {
-            state = TokenizerState::Normal;
-        }
-
-        if clean_line.contains(".unwrap()") {
-            results.push((line_num, "bare .unwrap() call detected".to_string()));
-        } else if clean_line.contains(".expect(") {
-            results.push((line_num, "bare .expect() call detected".to_string()));
         }
     }
 
     results
 }
 
-/// Checks for debug prints like println!, dbg!, console.log outside comments/strings.
+/// Extracts imported modules from source lines across Rust (`use crate::...`),
+/// Python (`import ...`, `from ... import`), and JS/TS (`import ... from '...'`).
 #[must_use]
-pub fn find_debug_prints(source: &str) -> Vec<(usize, String)> {
-    let mut results = Vec::new();
-    let debug_patterns = ["dbg!", "console.log"];
+pub fn extract_imported_modules(source: &str) -> Vec<(usize, String)> {
+    let mut imports = Vec::new();
 
-    for (line_idx, line) in source.lines().enumerate() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
-            continue;
+    for line in tokenize_source(source) {
+        let code = line.code_only.trim();
+
+        // Rust: use crate::foo::bar; or use foo::bar;
+        if code.starts_with("use ") {
+            let path_part = code["use ".len()..]
+                .trim_matches(';')
+                .trim();
+            imports.push((line.line_number, path_part.to_string()));
         }
-
-        for pat in debug_patterns {
-            if line.contains(pat) && !line.contains("tracing::") && !line.contains("debug_patterns") {
-                results.push((line_idx + 1, format!("debug statement '{pat}' found")));
-            }
+        // Python: import foo or from foo import bar
+        else if code.starts_with("import ") {
+            let mod_name = code["import ".len()..].split_whitespace().next().unwrap_or("");
+            imports.push((line.line_number, mod_name.to_string()));
+        } else if code.starts_with("from ") {
+            let mod_name = code["from ".len()..].split_whitespace().next().unwrap_or("");
+            imports.push((line.line_number, mod_name.to_string()));
         }
     }
 
-    results
+    imports
 }
