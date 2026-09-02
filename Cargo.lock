@@ -106,6 +106,7 @@ name = "codeguards-mcp"
 version = "0.2.0"
 dependencies = [
  "blake3",
+ "chrono",
  "ignore",
  "rayon",
  "regex",
