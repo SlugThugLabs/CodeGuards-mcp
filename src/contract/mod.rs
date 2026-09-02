@@ -2,13 +2,14 @@
 
 use crate::error::{CodeGuardsError, Result};
 use crate::library::catalog::GuardCatalog;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// TOML frontmatter extracted from .planning/ARCHITECTURE.md.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ArchitectureContract {
     #[serde(default)]
     pub modules: Vec<String>,
@@ -19,11 +20,11 @@ pub struct ArchitectureContract {
     #[serde(default)]
     pub enforce: Vec<String>,
     #[serde(default)]
-    pub guard_settings: BTreeMap<String, toml::Value>,
+    pub guard_settings: BTreeMap<String, serde_json::Value>,
 }
 
 /// Validation verdict returned by validate_architecture.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ValidationResult {
     pub is_valid: bool,
     pub contract: Option<ArchitectureContract>,

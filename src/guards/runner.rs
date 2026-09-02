@@ -63,7 +63,7 @@ fn evaluate_file_guards(
             .guard_settings
             .get("source_limits")
             .and_then(|v| v.get("max_lines"))
-            .and_then(|v| v.as_integer())
+            .and_then(|v| v.as_u64())
             .unwrap_or(400) as usize;
 
         let code_lines = count_code_lines(&content);

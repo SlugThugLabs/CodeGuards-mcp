@@ -1,12 +1,13 @@
 //! Catalog management, indexing, and anti-duplication registry for guard tests.
 
 use crate::types::GuardTestDefinition;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Global catalog index stored at ~/.slugthug/codeguards/tests/catalog.json
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct GuardCatalog {
     pub version: String,
     pub total_tests: usize,
@@ -15,7 +16,7 @@ pub struct GuardCatalog {
 }
 
 /// Lightweight summary of a guard test in catalog.json.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct GuardCatalogEntry {
     pub id: String,
     pub name: String,

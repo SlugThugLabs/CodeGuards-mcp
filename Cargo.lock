@@ -111,6 +111,7 @@ dependencies = [
  "rayon",
  "regex",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",

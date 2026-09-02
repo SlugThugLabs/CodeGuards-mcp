@@ -1,11 +1,12 @@
 //! Core domain models and reporting types.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Severity level of a guard violation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -14,7 +15,7 @@ pub enum Severity {
 }
 
 /// A specific violation detected in a file or project structure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Violation {
     pub guard_id: String,
     pub file: PathBuf,
@@ -26,7 +27,7 @@ pub struct Violation {
 }
 
 /// A verified user-authorized exception entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExceptionEntry {
     pub token: String,
     pub file: PathBuf,
@@ -36,7 +37,7 @@ pub struct ExceptionEntry {
 }
 
 /// Aggregated report from running guard tests.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct GuardReport {
     pub project_root: PathBuf,
     pub total_files_checked: usize,
