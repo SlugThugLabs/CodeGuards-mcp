@@ -4,6 +4,7 @@
 
 use crate::analyzer::{
     count_code_lines, extract_imported_modules, find_debug_prints, find_unwrap_expect_calls,
+    is_test_path, test_region_lines,
 };
 use crate::contract::ArchitectureContract;
 use crate::error::Result;
@@ -125,10 +126,26 @@ struct FileContext<'a> {
     rel_file: &'a Path,
     rel_str: &'a str,
     content: &'a str,
+    /// The whole file is a test file (path convention) — every line is test code.
     is_test: bool,
+    /// Line ranges of in-file `#[cfg(test)]` blocks; lines inside them are test
+    /// code even when the file itself is production code.
+    test_regions: &'a [(usize, usize)],
     rule_name: &'a str,
     guard: &'a GuardCatalogEntry,
     exceptions: &'a ProjectExceptions,
+}
+
+impl FileContext<'_> {
+    /// Whether `line` holds test-only code, per the path convention or an
+    /// in-file `#[cfg(test)]` region — the same distinction `clippy.toml` makes.
+    fn is_test_line(&self, line: usize) -> bool {
+        self.is_test
+            || self
+                .test_regions
+                .iter()
+                .any(|(start, end)| line >= *start && line <= *end)
+    }
 }
 
 /// Evaluates a single file against active contract rules and catalog definitions.
@@ -146,6 +163,7 @@ fn evaluate_file_guards(
 
     let rel_file = file.strip_prefix(project_root).unwrap_or(file);
     let rel_str = rel_file.to_string_lossy();
+    let test_regions = test_region_lines(&content);
 
     // Iterate through all active rules declared in contract.enforce
     for rule_name in &contract.enforce {
@@ -158,7 +176,8 @@ fn evaluate_file_guards(
             rel_file,
             rel_str: &rel_str,
             content: &content,
-            is_test: rel_str.contains("test") || rel_str.contains("tests/"),
+            is_test: is_test_path(&rel_str),
+            test_regions: &test_regions,
             rule_name,
             guard,
             exceptions,
@@ -220,8 +239,11 @@ fn check_source_limits(
 
 /// Rust language guard: flags bare `.unwrap()`/`.expect()` in non-test sources.
 fn check_no_unwrap(ctx: &FileContext<'_>, violations: &mut Vec<Violation>) {
-    if !ctx.is_test && ctx.rel_file.extension().is_some_and(|ext| ext == "rs") {
+    if ctx.rel_file.extension().is_some_and(|ext| ext == "rs") {
         for (line, msg) in find_unwrap_expect_calls(ctx.content) {
+            if ctx.is_test_line(line) {
+                continue;
+            }
             if !has_valid_exception(ctx.file, &ctx.guard.id, ctx.content, ctx.exceptions) {
                 violations.push(Violation {
                     guard_id: ctx.guard.id.clone(),
@@ -245,25 +267,26 @@ fn check_no_unwrap(ctx: &FileContext<'_>, violations: &mut Vec<Violation>) {
 
 /// Hygiene guard: flags leftover debug print statements in non-test sources.
 fn check_debug_prints(ctx: &FileContext<'_>, violations: &mut Vec<Violation>) {
-    if !ctx.is_test {
-        for (line, msg) in find_debug_prints(ctx.content) {
-            if !has_valid_exception(ctx.file, &ctx.guard.id, ctx.content, ctx.exceptions) {
-                violations.push(Violation {
-                    guard_id: ctx.guard.id.clone(),
-                    file: ctx.rel_file.to_path_buf(),
-                    line: Some(line),
-                    message: msg,
-                    severity: Severity::Error,
-                    fix_suggestion: Some(
-                        "Replace debug print with structured tracing::info/debug or remove before committing."
-                            .to_string(),
-                    ),
-                    rule_reference: Some(format!(
-                        ".planning/ARCHITECTURE.md [enforce: {}]",
-                        ctx.rule_name
-                    )),
-                });
-            }
+    for (line, msg) in find_debug_prints(ctx.content) {
+        if ctx.is_test_line(line) {
+            continue;
+        }
+        if !has_valid_exception(ctx.file, &ctx.guard.id, ctx.content, ctx.exceptions) {
+            violations.push(Violation {
+                guard_id: ctx.guard.id.clone(),
+                file: ctx.rel_file.to_path_buf(),
+                line: Some(line),
+                message: msg,
+                severity: Severity::Error,
+                fix_suggestion: Some(
+                    "Replace debug print with structured tracing::info/debug or remove before committing."
+                        .to_string(),
+                ),
+                rule_reference: Some(format!(
+                    ".planning/ARCHITECTURE.md [enforce: {}]",
+                    ctx.rule_name
+                )),
+            });
         }
     }
 }
@@ -335,4 +358,68 @@ fn has_valid_exception(
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::builtins::get_builtin_guard_tests;
+    use crate::types::GuardTestDefinition;
+
+    /// A `.unwrap()` inside an in-file `#[cfg(test)]` module is test code, while
+    /// one in production code is still reported — both halves of the fix.
+    #[test]
+    fn in_file_test_module_is_not_reported_but_production_unwrap_is() {
+        let source = "\
+pub fn production() -> u8 {
+    let x: Option<u8> = None;
+    x.unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        let y: Option<u8> = None;
+        y.unwrap();
+    }
+}
+";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src")).expect("create src dir");
+        let file = root.join("src/lib.rs");
+        std::fs::write(&file, source).expect("write source");
+
+        let contract = ArchitectureContract {
+            enforce: vec!["no_unwrap".to_string()],
+            ..ArchitectureContract::default()
+        };
+        let definitions: Vec<(GuardTestDefinition, PathBuf)> = get_builtin_guard_tests()
+            .into_iter()
+            .map(|definition| (definition, PathBuf::from("/x")))
+            .collect();
+        let catalog = GuardCatalog::from_definitions(&definitions);
+        let exceptions = ProjectExceptions::default();
+
+        let report = run_guard_checks(root, &[file], &contract, &catalog, &exceptions)
+            .expect("guard run succeeds");
+
+        assert!(
+            report.passed_tests.contains(&"no_unwrap".to_string()),
+            "the rule must be evaluated, not skipped: {:?}",
+            report.passed_tests
+        );
+        assert_eq!(
+            report.violations.len(),
+            1,
+            "only the production unwrap may be reported: {:?}",
+            report.violations
+        );
+        assert_eq!(
+            report.violations[0].line,
+            Some(3),
+            "the production unwrap on line 3 is a true positive"
+        );
+    }
 }
