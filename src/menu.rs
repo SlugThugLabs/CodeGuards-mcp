@@ -20,14 +20,18 @@ fn read_choice() -> Result<Option<usize>, Box<dyn std::error::Error>> {
 }
 
 /// Runs the interactive setup menu. Returns `Ok(true)` if user chose to run `serve`.
+///
+/// # Errors
+///
+/// Returns an error if the menu prompt cannot be flushed to stdout or if
+/// reading the user's choice from stdin fails.
 pub fn run_menu() -> Result<bool, Box<dyn std::error::Error>> {
     loop {
         let style = Style::stdout();
-        print!("{}", render_menu(&style));
+        print!("{}", render_menu(style));
         std::io::stdout().flush()?;
-        let choice = match read_choice()? {
-            Some(c) => c,
-            None => return Ok(false), // Exit on EOF
+        let Some(choice) = read_choice()? else {
+            return Ok(false); // Exit on EOF
         };
         match choice {
             1 => install_step(),
@@ -82,7 +86,7 @@ const MENU: &str = "\
 
 Choose an option [1-6]: ";
 
-fn render_menu(style: &Style) -> String {
+fn render_menu(style: Style) -> String {
     if !style.enabled() {
         return MENU.to_owned();
     }
@@ -206,8 +210,13 @@ fn connect_step() {
             println!("Connected successfully! Verify with: {cli} mcp list");
         }
         _ => {
-            println!("Could not invoke '{cli}' CLI. Make sure '{cli}' is installed and on your PATH.");
-            println!("Manual command: {cli} mcp add codeguards -- {} serve", exec_path.display());
+            println!(
+                "Could not invoke '{cli}' CLI. Make sure '{cli}' is installed and on your PATH."
+            );
+            println!(
+                "Manual command: {cli} mcp add codeguards -- {} serve",
+                exec_path.display()
+            );
         }
     }
 }
@@ -226,14 +235,21 @@ fn other_client_step() {
     println!("  Command:      {}", exec_path.display());
     println!("  Arguments:    serve\n");
     println!("For clients reading .mcp.json (OpenCode, Claude, Cursor):");
-    println!("{{\n  \"mcpServers\": {{\n    \"codeguards\": {{\n      \"command\": \"{}\",\n      \"args\": [\"serve\"]\n    }}\n  }}\n}}", exec_path.display());
+    println!(
+        "{{\n  \"mcpServers\": {{\n    \"codeguards\": {{\n      \"command\": \"{}\",\n      \"args\": [\"serve\"]\n    }}\n  }}\n}}",
+        exec_path.display()
+    );
 }
 
 fn guard_catalog_step() {
     println!();
     match crate::library::ensure_test_library_seeded() {
         Ok(catalog) => {
-            println!("Guard-Test Library Catalog ({} tests available in {}):", catalog.total_tests, get_tests_dir().display());
+            println!(
+                "Guard-Test Library Catalog ({} tests available in {}):",
+                catalog.total_tests,
+                get_tests_dir().display()
+            );
             for (id, entry) in &catalog.tests {
                 println!("  - {:<30} [{}]", id, entry.category);
                 println!("    Summary: {}", entry.summary);
@@ -253,5 +269,8 @@ fn confirm_serve() -> Result<bool, Box<dyn std::error::Error>> {
     std::io::stdout().flush()?;
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line)?;
-    Ok(matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+    Ok(matches!(
+        line.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }

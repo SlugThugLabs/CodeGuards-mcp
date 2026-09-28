@@ -21,6 +21,7 @@ pub struct StrippedLine {
 }
 
 /// Tokenizes source text and strips all non-executable tokens (comments, strings).
+#[must_use]
 pub fn tokenize_source(source: &str) -> Vec<StrippedLine> {
     let mut state = LexState::Normal;
     let mut lines = Vec::new();
@@ -111,7 +112,7 @@ pub fn count_code_lines(source: &str) -> usize {
         .count()
 }
 
-/// Checks if a source file contains unwrap() or expect() calls outside comments and strings.
+/// Checks if a source file contains `unwrap()` or `expect()` calls outside comments and strings.
 #[must_use]
 pub fn find_unwrap_expect_calls(source: &str) -> Vec<(usize, String)> {
     let mut results = Vec::new();
@@ -179,7 +180,11 @@ mod tests {
     fn commented_out_rust_imports_are_not_extracted() {
         let src = "// use crate::secret;\n// use super::danger;\nuse crate::real;\n";
         let imports = extract_imported_modules(src);
-        assert_eq!(imports.len(), 1, "only the live import must count: {imports:?}");
+        assert_eq!(
+            imports.len(),
+            1,
+            "only the live import must count: {imports:?}"
+        );
         assert_eq!(imports[0].1, "crate::real");
     }
 
@@ -187,7 +192,11 @@ mod tests {
     fn commented_out_python_imports_are_not_extracted() {
         let src = "# import evil\n# from evil import bad\nimport good\nfrom good import thing\n";
         let imports = extract_imported_modules(src);
-        assert_eq!(imports.len(), 2, "only live imports must count: {imports:?}");
+        assert_eq!(
+            imports.len(),
+            2,
+            "only live imports must count: {imports:?}"
+        );
         assert_eq!(imports[0].1, "good");
         assert_eq!(imports[1].1, "good");
     }
@@ -196,7 +205,11 @@ mod tests {
     fn block_comment_imports_are_not_extracted() {
         let src = "/* use crate::hidden;\n   import phantom */\nuse crate::live;\n";
         let imports = extract_imported_modules(src);
-        assert_eq!(imports.len(), 1, "block-comment imports must be stripped: {imports:?}");
+        assert_eq!(
+            imports.len(),
+            1,
+            "block-comment imports must be stripped: {imports:?}"
+        );
         assert_eq!(imports[0].1, "crate::live");
     }
 
@@ -285,7 +298,10 @@ mod tests {
     fn doc_comment_with_import_example_is_not_extracted() {
         let src = "/// Example: use crate::demo;\npub fn f() {}\n";
         let imports = extract_imported_modules(src);
-        assert!(imports.is_empty(), "doc-comment example must not count: {imports:?}");
+        assert!(
+            imports.is_empty(),
+            "doc-comment example must not count: {imports:?}"
+        );
     }
 
     #[test]

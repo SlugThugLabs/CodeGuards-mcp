@@ -5,12 +5,10 @@ use crate::library::catalog::GuardCatalog;
 use crate::library::create_custom_guard_test;
 use crate::storage::ProjectExceptions;
 use crate::types::GuardTestDefinition;
-use rmcp::handler::server::wrapper::Parameters;
 use rmcp::handler::server::ServerHandler;
-use rmcp::model::{
-    Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
-};
-use rmcp::{tool, tool_handler, tool_router, ErrorData, Json};
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::{Implementation, ProtocolVersion, ServerCapabilities, ServerInfo};
+use rmcp::{ErrorData, Json, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,7 +17,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 const INSTRUCTIONS: &str = "CodeGuards architecture governance and modular test authoring tools.";
-const MAX_REQUEST_SIZE: usize = 1024 * 10; // 10KB limit
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ValidateArchitectureRequest {
@@ -35,7 +32,7 @@ pub struct ListGuardTestsRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CreateGuardTestRequest {
-    /// Unique test name (e.g. 'auth_required')
+    /// Unique test name (e.g. '`auth_required`')
     pub name: String,
     /// Category (structural, complexity, hygiene, quality, languages/rust, custom/<ns>)
     pub category: String,
@@ -93,11 +90,7 @@ impl CodeGuardsMcpServer {
         &self,
         request: Parameters<ValidateArchitectureRequest>,
     ) -> Result<Json<crate::contract::ValidationResult>, ErrorData> {
-        let path_str = request
-            .0
-            .project_path
-            .as_deref()
-            .unwrap_or(".");
+        let path_str = request.0.project_path.as_deref().unwrap_or(".");
         if path_str.len() > 1024 {
             return Err(ErrorData::invalid_params("Project path too long", None));
         }
@@ -109,7 +102,10 @@ impl CodeGuardsMcpServer {
 
         match validate_architecture(&project_root, &catalog_guard) {
             Ok(res) => Ok(Json(res)),
-            Err(e) => Err(ErrorData::internal_error(format!("Validation error: {e}"), None)),
+            Err(e) => Err(ErrorData::internal_error(
+                format!("Validation error: {e}"),
+                None,
+            )),
         }
     }
 
@@ -126,9 +122,7 @@ impl CodeGuardsMcpServer {
         let filtered: BTreeMap<String, _> = catalog
             .tests
             .iter()
-            .filter(|(_, entry)| {
-                category_filter.is_none_or(|cat| entry.category.starts_with(cat))
-            })
+            .filter(|(_, entry)| category_filter.is_none_or(|cat| entry.category.starts_with(cat)))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
@@ -163,7 +157,7 @@ impl CodeGuardsMcpServer {
         };
 
         let tests_root = crate::util::get_tests_dir();
-        match create_custom_guard_test(&tests_root, def, req.force) {
+        match create_custom_guard_test(&tests_root, &def, req.force) {
             Ok(path) => {
                 if let Ok(new_cat) = crate::library::ensure_test_library_seeded() {
                     let mut cat_lock = self.catalog.lock().await;
@@ -174,9 +168,10 @@ impl CodeGuardsMcpServer {
                     path.display()
                 )))
             }
-            Err(e) => Err(ErrorData::internal_error(format!(
-                "Failed to create guard test: {e}"
-            ), None)),
+            Err(e) => Err(ErrorData::internal_error(
+                format!("Failed to create guard test: {e}"),
+                None,
+            )),
         }
     }
 
@@ -188,22 +183,39 @@ impl CodeGuardsMcpServer {
         request: Parameters<AddExceptionRequest>,
     ) -> Result<Json<crate::types::ExceptionEntry>, ErrorData> {
         let req = request.0;
-        if req.project_path.len() > 1024 || req.file.len() > 1024 || req.guard_id.len() > 256 || req.reason.len() > 1024 {
+        if req.project_path.len() > 1024
+            || req.file.len() > 1024
+            || req.guard_id.len() > 256
+            || req.reason.len() > 1024
+        {
             return Err(ErrorData::invalid_params("Request fields too large", None));
         }
         let project_path = match crate::util::validate_safe_path(Path::new(&req.project_path)) {
             Ok(p) => p,
-            Err(e) => return Err(ErrorData::invalid_params(format!("Unsafe project path: {e}"), None)),
+            Err(e) => {
+                return Err(ErrorData::invalid_params(
+                    format!("Unsafe project path: {e}"),
+                    None,
+                ));
+            }
         };
         let mut exceptions = ProjectExceptions::load(&project_path).unwrap_or_default();
 
         match exceptions.add_exception(Path::new(&req.file), &req.guard_id, &req.reason) {
             Ok(entry) => Ok(Json(entry)),
-            Err(e) => Err(ErrorData::internal_error(format!("Exception creation failed: {e}"), None)),
+            Err(e) => Err(ErrorData::internal_error(
+                format!("Exception creation failed: {e}"),
+                None,
+            )),
         }
     }
 }
 
+// The `tool_handler` attribute expands `list_tools`/`call_tool` into trait methods
+// whose bodies are `std::future::ready(..)`. The `async` is prescribed by the
+// `ServerHandler` trait signature, so removing it is impossible; the lint only
+// sees the macro's expansion, where no `.await` is needed.
+#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for CodeGuardsMcpServer {
     fn get_info(&self) -> ServerInfo {

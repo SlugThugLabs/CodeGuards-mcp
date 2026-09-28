@@ -18,9 +18,9 @@ pub struct ProjectExceptions {
 
 impl ProjectExceptions {
     /// Loads the exceptions registry for a given project, or empty if not present.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be read from disk.
     pub fn load(project_path: &Path) -> Result<Self> {
         let storage_dir = get_project_storage_dir(project_path);
@@ -44,9 +44,9 @@ impl ProjectExceptions {
     }
 
     /// Saves the exceptions registry to ~/.slugthug/codeguards/projects/<id>/exceptions.json.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be written to disk.
     pub fn save(&self) -> Result<PathBuf> {
         let storage_dir = get_project_storage_dir(&self.project_path);
@@ -66,10 +66,10 @@ impl ProjectExceptions {
     }
 
     /// Adds a user-authorized exception and returns the generated token.
-    /// 
+    ///
     /// # Errors
-    /// 
-    /// Returns [`CodeGuardsError::Io`] if the token generation exceeds maximum retries,  
+    ///
+    /// Returns [`CodeGuardsError::Io`] if the token generation exceeds maximum retries,\
     /// or if the exceptions file cannot be written to disk.
     pub fn add_exception(
         &mut self,
@@ -83,13 +83,13 @@ impl ProjectExceptions {
 
         loop {
             token = compute_exception_token(file, guard_id, reason);
-            
+
             // Check for collision with existing tokens
             if !self.exceptions.iter().any(|e| e.token == token) {
                 // No collision - use this token
                 break;
             }
-            
+
             attempts += 1;
             if attempts >= max_attempts {
                 // Give up after max attempts to avoid infinite loops
@@ -101,12 +101,12 @@ impl ProjectExceptions {
                     ),
                 });
             }
-            
+
             // Add slight variation to inputs to change HMAC output
             // by appending attempt number to reason
             let modified_reason = format!("{reason} (attempt {attempts})");
             token = compute_exception_token(file, guard_id, &modified_reason);
-            
+
             if !self.exceptions.iter().any(|e| e.token == token) {
                 break;
             }
@@ -130,9 +130,9 @@ impl ProjectExceptions {
     }
 
     /// Revokes an exception by token.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns [`CodeGuardsError::Io`] if the exceptions file cannot be written to disk.
     pub fn revoke(&mut self, token: &str) -> Result<bool> {
         let before_len = self.exceptions.len();

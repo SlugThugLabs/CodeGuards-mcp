@@ -29,8 +29,10 @@ mod tests {
     #[test]
     fn test_compute_exception_token_deterministic() {
         let file = Path::new("src/server.rs");
-        let token1 = compute_exception_token(file, "complexity/source-limits", "transport scaffolding");
-        let token2 = compute_exception_token(file, "complexity/source-limits", "transport scaffolding");
+        let token1 =
+            compute_exception_token(file, "complexity/source-limits", "transport scaffolding");
+        let token2 =
+            compute_exception_token(file, "complexity/source-limits", "transport scaffolding");
         assert_eq!(token1, token2);
         assert_eq!(token1.len(), 5);
     }

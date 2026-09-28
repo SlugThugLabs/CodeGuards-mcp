@@ -1,0 +1,9 @@
+# Clippy configuration.
+#
+# The crate denies `unwrap_used`, `expect_used` and `panic` in shipping code
+# (see [lints.clippy] in Cargo.toml). In tests those calls are the assertion
+# mechanism — a panic in a test *is* the failure report — so they are allowed
+# there and enforced everywhere else.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

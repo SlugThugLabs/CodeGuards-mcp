@@ -1,4 +1,4 @@
-//! CodeGuards CLI entrypoint and subcommand dispatch.
+//! `CodeGuards` CLI entrypoint and subcommand dispatch.
 
 use codeguards_mcp::analyzer::{collect_git_diff_files, collect_source_files};
 use codeguards_mcp::contract::{load_architecture, validate_architecture};
@@ -15,9 +15,9 @@ async fn main() -> ExitCode {
 
     match command.as_str() {
         "menu" => run_menu_cli().await,
-        "check" => run_check_cli(args).await,
-        "exception" => run_exception_cli(args).await,
-        "validate" => run_validate_cli(args).await,
+        "check" => run_check_cli(args),
+        "exception" => run_exception_cli(args),
+        "validate" => run_validate_cli(args),
         "serve" => run_serve_cli(args).await,
         "--help" | "-h" | "help" => {
             print_help();
@@ -56,7 +56,7 @@ fn print_help() {
     );
 }
 
-async fn run_check_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
+fn run_check_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
     let mut check_all = false;
     let mut root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
@@ -110,6 +110,18 @@ async fn run_check_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
         }
     };
 
+    // An enabled rule with no implementation is reported, never silently counted
+    // as passing: a run that skipped a guard says nothing about what it skipped.
+    if !report.unevaluated_tests.is_empty() {
+        println!(
+            "[CODEGUARD-WARNING] {} enabled rule(s) were NOT evaluated (no implementation):",
+            report.unevaluated_tests.len()
+        );
+        for rule in &report.unevaluated_tests {
+            println!("   - {rule}");
+        }
+    }
+
     if report.is_pass() {
         println!(
             "[CODEGUARD-PASS] {} files verified across {} active guard rules in {}ms.",
@@ -135,19 +147,21 @@ async fn run_check_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
         }
         println!("\n════════════════════════════════════════════════════════════");
         println!(" Total Errors: {}", report.error_count());
-        println!(" Run 'codeguards exception add <file> <guard> --reason=\"...\"' if an approved exception is required.");
+        println!(
+            " Run 'codeguards exception add <file> <guard> --reason=\"...\"' if an approved exception is required."
+        );
         println!("════════════════════════════════════════════════════════════\n");
         ExitCode::from(1)
     }
 }
 
-async fn run_validate_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
+fn run_validate_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
     let mut root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     while let Some(arg) = args.next() {
-        if arg == "--root" {
-            if let Some(r) = args.next() {
-                root = PathBuf::from(r);
-            }
+        if arg == "--root"
+            && let Some(r) = args.next()
+        {
+            root = PathBuf::from(r);
         }
     }
 
@@ -168,7 +182,9 @@ async fn run_validate_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
     };
 
     if result.is_valid {
-        println!("[CODEGUARD-PASS] .planning/ARCHITECTURE.md is valid and all required guards exist!");
+        println!(
+            "[CODEGUARD-PASS] .planning/ARCHITECTURE.md is valid and all required guards exist!"
+        );
         println!("  Active Guards: {:?}", result.ready_guards);
         ExitCode::SUCCESS
     } else {
@@ -180,35 +196,29 @@ async fn run_validate_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
-async fn run_exception_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
+fn run_exception_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
     let sub = args.next().unwrap_or_else(|| "list".to_string());
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut exceptions = ProjectExceptions::load(&root).unwrap_or_default();
 
     match sub.as_str() {
         "add" => {
-            let file_str = match args.next() {
-                Some(f) => f,
-                None => {
-                    eprintln!("Usage: codeguards exception add <file> <guard> --reason=\"...\"");
-                    return ExitCode::from(2);
-                }
+            let Some(file_str) = args.next() else {
+                eprintln!("Usage: codeguards exception add <file> <guard> --reason=\"...\"");
+                return ExitCode::from(2);
             };
-            let guard = match args.next() {
-                Some(g) => g,
-                None => {
-                    eprintln!("Usage: codeguards exception add <file> <guard> --reason=\"...\"");
-                    return ExitCode::from(2);
-                }
+            let Some(guard) = args.next() else {
+                eprintln!("Usage: codeguards exception add <file> <guard> --reason=\"...\"");
+                return ExitCode::from(2);
             };
             let mut reason = "User authorized exception".to_string();
             while let Some(arg) = args.next() {
-                if arg.starts_with("--reason=") {
-                    reason = arg["--reason=".len()..].trim_matches('"').to_string();
-                } else if arg == "--reason" {
-                    if let Some(r) = args.next() {
-                        reason = r;
-                    }
+                if let Some(value) = arg.strip_prefix("--reason=") {
+                    reason = value.trim_matches('"').to_string();
+                } else if arg == "--reason"
+                    && let Some(r) = args.next()
+                {
+                    reason = r;
                 }
             }
 
@@ -218,7 +228,10 @@ async fn run_exception_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
                     println!("  Token:   {}", entry.token);
                     println!("  File:    {}", entry.file.display());
                     println!("  Guard:   {}", entry.guard_id);
-                    println!("  Header:  // codeguard-exception: token={}; guard={}; reason=\"{}\"", entry.token, entry.guard_id, entry.reason);
+                    println!(
+                        "  Header:  // codeguard-exception: token={}; guard={}; reason=\"{}\"",
+                        entry.token, entry.guard_id, entry.reason
+                    );
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
@@ -233,18 +246,21 @@ async fn run_exception_cli(mut args: impl Iterator<Item = String>) -> ExitCode {
                 println!("  (No active exceptions)");
             } else {
                 for e in &exceptions.exceptions {
-                    println!("  - [{}] {} (Guard: {}) - Reason: {}", e.token, e.file.display(), e.guard_id, e.reason);
+                    println!(
+                        "  - [{}] {} (Guard: {}) - Reason: {}",
+                        e.token,
+                        e.file.display(),
+                        e.guard_id,
+                        e.reason
+                    );
                 }
             }
             ExitCode::SUCCESS
         }
         "revoke" => {
-            let token = match args.next() {
-                Some(t) => t,
-                None => {
-                    eprintln!("Usage: codeguards exception revoke <token>");
-                    return ExitCode::from(2);
-                }
+            let Some(token) = args.next() else {
+                eprintln!("Usage: codeguards exception revoke <token>");
+                return ExitCode::from(2);
             };
             match exceptions.revoke(&token) {
                 Ok(true) => {

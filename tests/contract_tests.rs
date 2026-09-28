@@ -25,7 +25,10 @@ Some body text.
         assert_eq!(contract.modules, vec!["server", "storage"]);
         assert_eq!(contract.layers, vec!["transport", "storage"]);
         assert_eq!(contract.enforce, vec!["no_unwrap", "source_limits"]);
-        assert_eq!(contract.allowed_dependencies.get("server").unwrap(), &vec!["storage"]);
+        assert_eq!(
+            contract.allowed_dependencies.get("server").unwrap(),
+            &vec!["storage"]
+        );
         assert!(body.contains("Some body text."));
     }
 

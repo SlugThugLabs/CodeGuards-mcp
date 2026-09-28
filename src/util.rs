@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 
 /// Validates that a path does not target sensitive system directories
 /// (e.g., `/proc`, `/sys`, `/dev`, `~/.ssh`, `~/.aws`).
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns [`CodeGuardsError::SandboxViolation`] if the path escapes the project root.
 pub fn validate_safe_path(path: &Path) -> Result<PathBuf> {
     let canonical = match path.canonicalize() {
@@ -54,12 +54,14 @@ pub fn hash_project_path(project_path: &Path) -> String {
 
 /// Retrieves or initializes a local private HMAC salt secret in ~/.slugthug/.secret.key
 /// ensuring AI agents cannot compute exception tokens in memory without access.
+#[must_use]
 pub fn get_or_init_secret_salt() -> [u8; 32] {
     let home = get_slugthug_home();
     let key_path = home.join(".secret.key");
 
     if let Ok(bytes) = fs::read(&key_path)
-        && bytes.len() == 32 {
+        && bytes.len() == 32
+    {
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
         return arr;
@@ -94,6 +96,7 @@ pub fn compute_exception_token(file: &Path, guard_id: &str, reason: &str) -> Str
 }
 
 /// Returns the central ~/.slugthug directory.
+#[must_use]
 pub fn get_slugthug_home() -> PathBuf {
     if let Ok(dir) = std::env::var("SLUGTHUG_HOME") {
         PathBuf::from(dir)
@@ -105,11 +108,12 @@ pub fn get_slugthug_home() -> PathBuf {
 }
 
 /// Returns the central test library directory: ~/.slugthug/codeguards/tests/
+#[must_use]
 pub fn get_tests_dir() -> PathBuf {
     get_slugthug_home().join("codeguards").join("tests")
 }
 
-/// Returns the project-specific storage directory: ~/.slugthug/codeguards/projects/<project_id>/
+/// Returns the project-specific storage directory: ~/.slugthug/codeguards/projects/<`project_id`>/
 #[must_use]
 pub fn get_project_storage_dir(project_path: &Path) -> PathBuf {
     let hash = hash_project_path(project_path);

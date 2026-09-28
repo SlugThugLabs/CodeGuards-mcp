@@ -17,13 +17,16 @@ mod tests {
             version: "1.0.0".to_string(),
             summary: "Max line ceiling".to_string(),
             tags: vec!["lines".to_string(), "size".to_string()],
-            aliases: vec!["small_files_limit".to_string(), "max_file_lines".to_string()],
+            aliases: vec![
+                "small_files_limit".to_string(),
+                "max_file_lines".to_string(),
+            ],
             engine: "source_limits".to_string(),
             default_params: BTreeMap::new(),
             remediation: "Split file".to_string(),
         };
 
-        create_custom_guard_test(tests_root, def, false).unwrap();
+        create_custom_guard_test(tests_root, &def, false).unwrap();
 
         let catalog = load_all_tests_and_save_catalog(tests_root).unwrap();
         assert_eq!(catalog.total_tests, 1);
@@ -48,14 +51,18 @@ mod tests {
             category: "hygiene".to_string(),
             version: "1.0.0".to_string(),
             summary: "Detects secrets".to_string(),
-            tags: vec!["security".to_string(), "secrets".to_string(), "keys".to_string()],
+            tags: vec![
+                "security".to_string(),
+                "secrets".to_string(),
+                "keys".to_string(),
+            ],
             aliases: vec!["secret_scanner".to_string()],
             engine: "no_secrets".to_string(),
             default_params: BTreeMap::new(),
             remediation: "Extract secret".to_string(),
         };
 
-        create_custom_guard_test(tests_root, def1, false).unwrap();
+        create_custom_guard_test(tests_root, &def1, false).unwrap();
 
         // Attempting to create duplicate by alias should fail
         let def2 = GuardTestDefinition {
@@ -64,14 +71,18 @@ mod tests {
             category: "hygiene".to_string(),
             version: "1.0.0".to_string(),
             summary: "Scans secrets".to_string(),
-            tags: vec!["security".to_string(), "secrets".to_string(), "keys".to_string()],
+            tags: vec![
+                "security".to_string(),
+                "secrets".to_string(),
+                "keys".to_string(),
+            ],
             aliases: vec![],
             engine: "no_secrets".to_string(),
             default_params: BTreeMap::new(),
             remediation: "Extract secret".to_string(),
         };
 
-        let result = create_custom_guard_test(tests_root, def2, false);
+        let result = create_custom_guard_test(tests_root, &def2, false);
         assert!(result.is_err());
     }
 }

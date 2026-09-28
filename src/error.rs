@@ -1,9 +1,9 @@
-//! CodeGuards error taxonomy.
+//! `CodeGuards` error taxonomy.
 
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// Core error type for CodeGuards operations.
+/// Core error type for `CodeGuards` operations.
 #[derive(Debug, Error)]
 pub enum CodeGuardsError {
     #[error("I/O error at {path}: {source}")]
@@ -13,7 +13,9 @@ pub enum CodeGuardsError {
         source: std::io::Error,
     },
 
-    #[error("Sandbox violation: path {path} is unsafe (outside project root or accesses sensitive system paths)")]
+    #[error(
+        "Sandbox violation: path {path} is unsafe (outside project root or accesses sensitive system paths)"
+    )]
     SandboxViolation { path: PathBuf },
 
     #[error("JSON serialization/deserialization error: {0}")]

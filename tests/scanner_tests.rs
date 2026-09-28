@@ -59,7 +59,11 @@ fn run() {
         fs::write(&clean_file, "pub fn clean() -> Result<(), ()> { Ok(()) }\n").unwrap();
 
         let dirty_file = src_dir.join("dirty.rs");
-        fs::write(&dirty_file, "pub fn dirty() { let x = Some(1).unwrap(); }\n").unwrap();
+        fs::write(
+            &dirty_file,
+            "pub fn dirty() { let x = Some(1).unwrap(); }\n",
+        )
+        .unwrap();
 
         let contract = ArchitectureContract {
             enforce: vec!["no_unwrap".to_string(), "source_limits".to_string()],
@@ -75,7 +79,14 @@ fn run() {
         );
         let exceptions = ProjectExceptions::default();
 
-        let report = run_guard_checks(dir.path(), &[clean_file, dirty_file], &contract, &catalog, &exceptions).unwrap();
+        let report = run_guard_checks(
+            dir.path(),
+            &[clean_file, dirty_file],
+            &contract,
+            &catalog,
+            &exceptions,
+        )
+        .unwrap();
 
         assert!(!report.is_pass());
         assert_eq!(report.violations.len(), 1);

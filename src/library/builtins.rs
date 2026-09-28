@@ -4,6 +4,10 @@ use crate::types::GuardTestDefinition;
 use std::collections::BTreeMap;
 
 /// Returns all standard built-in guard tests.
+///
+/// The body is a flat table of literals with no control flow or branching, so
+/// its length tracks how many guards ship by default rather than its complexity.
+#[allow(clippy::too_many_lines)]
 #[must_use]
 pub fn get_builtin_guard_tests() -> Vec<GuardTestDefinition> {
     vec![

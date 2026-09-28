@@ -1,0 +1,12 @@
+# GitHub language statistics.
+#
+# `legacy-python/` is the original Python implementation, kept in the tree as a
+# reference for the Rust port (and deliberately excluded by
+# `src/analyzer/walker.rs`). GitHub otherwise counts those 440K as this
+# repository's primary language and labels the whole project "Python".
+# Marking it vendored keeps it readable in the tree while removing it from the
+# language breakdown, so the repo reads as what it is: a Rust crate.
+legacy-python/** linguist-vendored
+
+# Derived/generated files — keep them out of the language stats.
+Cargo.lock linguist-generated

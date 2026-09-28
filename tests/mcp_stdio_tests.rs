@@ -6,57 +6,111 @@
 //!
 //!   initialize -> notifications/initialized -> tools/list -> tools/call
 
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
+use helpers::{handshake, rpc_id, send, spawn_server, wait_for_response};
+use std::io::BufReader;
 
-fn rpc_id(next: &mut i64) -> i64 {
-    *next += 1;
-    *next
-}
+/// Test-only fixtures.
+///
+/// The module is marked `#[cfg(test)]` (which an integration test target always
+/// is) so the `allow-unwrap-in-tests` / `allow-expect-in-tests` /
+/// `allow-panic-in-tests` settings from `clippy.toml` apply here: a panic in
+/// these helpers is the failure report, exactly as inside a `#[test]` body.
+#[cfg(test)]
+mod helpers {
+    use std::io::{BufRead, Write};
+    use std::process::{Child, Command, Stdio};
 
-/// Spawns the real binary in stdio mode with an isolated SLUGTHUG_HOME.
-fn spawn_server(home: &std::path::Path) -> Child {
-    Command::new(env!("CARGO_BIN_EXE_codeguards-mcp"))
-        .arg("serve")
-        .env("SLUGTHUG_HOME", home)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to spawn codeguards-mcp serve")
-}
+    pub(super) fn rpc_id(next: &mut i64) -> i64 {
+        *next += 1;
+        *next
+    }
 
-/// Sends one newline-delimited JSON-RPC message to the child's stdin.
-fn send(child: &mut Child, msg: &str) {
-    child.stdin.as_mut().unwrap().write_all(msg.as_bytes()).unwrap();
-    child.stdin.as_mut().unwrap().write_all(b"\n").unwrap();
-    child.stdin.as_mut().unwrap().flush().unwrap();
-}
+    /// Spawns the real binary in stdio mode with an isolated `SLUGTHUG_HOME`.
+    pub(super) fn spawn_server(home: &std::path::Path) -> Child {
+        Command::new(env!("CARGO_BIN_EXE_codeguards-mcp"))
+            .arg("serve")
+            .env("SLUGTHUG_HOME", home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("failed to spawn codeguards-mcp serve")
+    }
 
-/// Waits for the next JSON-RPC line whose `id` matches.
-/// Skips any notifications (e.g. logging) that have no id.
-fn wait_for_response(
-    reader: &mut dyn BufRead,
-    expected_id: i64,
-) -> serde_json::Value {
-    for _ in 0..200 {
+    /// Sends one newline-delimited JSON-RPC message to the child's stdin.
+    pub(super) fn send(child: &mut Child, msg: &str) {
+        child
+            .stdin
+            .as_mut()
+            .expect("child stdin must be piped")
+            .write_all(msg.as_bytes())
+            .expect("stdin write failed");
+        child
+            .stdin
+            .as_mut()
+            .expect("child stdin must be piped")
+            .write_all(b"\n")
+            .expect("stdin write failed");
+        child
+            .stdin
+            .as_mut()
+            .expect("child stdin must be piped")
+            .flush()
+            .expect("stdin flush failed");
+    }
+
+    /// Reads the next non-empty line and parses it as JSON, or `None` for a blank line.
+    fn read_json_line(reader: &mut dyn BufRead, expected_id: i64) -> Option<serde_json::Value> {
         let mut line = String::new();
         let n = reader.read_line(&mut line).expect("stdout read failed");
-        if n == 0 {
-            panic!("server closed stdout before responding to id {expected_id}");
-        }
+        assert!(
+            n != 0,
+            "server closed stdout before responding to id {expected_id}"
+        );
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
+            return None;
         }
-        let v: serde_json::Value =
-            serde_json::from_str(trimmed).expect("non-JSON line on MCP stdio: {trimmed}");
-        if v.get("id").and_then(|i| i.as_i64()) == Some(expected_id) {
-            return v;
-        }
-        // Otherwise a notification or out-of-order message — skip.
+        Some(serde_json::from_str(trimmed).expect("non-JSON line on MCP stdio"))
     }
-    panic!("no response for id {expected_id} within 200 lines");
+
+    /// Performs the mandatory `initialize` + `notifications/initialized`
+    /// handshake and returns the `initialize` response.
+    pub(super) fn handshake(
+        child: &mut Child,
+        reader: &mut dyn BufRead,
+        next_id: &mut i64,
+    ) -> serde_json::Value {
+        let init_id = rpc_id(next_id);
+        send(
+            child,
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codeguards-test","version":"0.0.1"}}}"#,
+        );
+        let resp = wait_for_response(reader, init_id);
+        send(
+            child,
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        );
+        resp
+    }
+
+    /// Waits for the next JSON-RPC line whose `id` matches.
+    /// Skips any notifications (e.g. logging) that have no id.
+    pub(super) fn wait_for_response(
+        reader: &mut dyn BufRead,
+        expected_id: i64,
+    ) -> serde_json::Value {
+        for _ in 0..200 {
+            let Some(v) = read_json_line(reader, expected_id) else {
+                continue;
+            };
+            if v.get("id").and_then(serde_json::Value::as_i64) == Some(expected_id) {
+                return v;
+            }
+            // Otherwise a notification or out-of-order message — skip.
+        }
+        panic!("no response for id {expected_id} within 200 lines");
+    }
 }
 
 #[test]
@@ -67,13 +121,8 @@ fn mcp_stdio_full_handshake() {
     let mut reader = BufReader::new(stdout);
     let mut next_id = 0i64;
 
-    // 1) initialize
-    let init_id = rpc_id(&mut next_id);
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codeguards-test","version":"0.0.1"}}}"#,
-    );
-    let resp = wait_for_response(&mut reader, init_id);
+    // 1) + 2) initialize handshake
+    let resp = handshake(&mut child, &mut reader, &mut next_id);
     let result = resp
         .get("result")
         .unwrap_or_else(|| panic!("initialize failed: {resp}"));
@@ -84,12 +133,6 @@ fn mcp_stdio_full_handshake() {
     assert!(
         result["capabilities"]["tools"].is_object(),
         "server must advertise tools capability"
-    );
-
-    // 2) notifications/initialized (no response expected)
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
     );
 
     // 3) tools/list
@@ -106,22 +149,17 @@ fn mcp_stdio_full_handshake() {
         .iter()
         .map(|t| t["name"].as_str().expect("tool name"))
         .collect();
-    assert!(
-        tool_names.contains(&"validate_architecture"),
-        "missing validate_architecture, got {tool_names:?}"
-    );
-    assert!(
-        tool_names.contains(&"list_guard_tests"),
-        "missing list_guard_tests, got {tool_names:?}"
-    );
-    assert!(
-        tool_names.contains(&"create_guard_test"),
-        "missing create_guard_test, got {tool_names:?}"
-    );
-    assert!(
-        tool_names.contains(&"add_exception"),
-        "missing add_exception, got {tool_names:?}"
-    );
+    for expected in [
+        "validate_architecture",
+        "list_guard_tests",
+        "create_guard_test",
+        "add_exception",
+    ] {
+        assert!(
+            tool_names.contains(&expected),
+            "missing {expected}, got {tool_names:?}"
+        );
+    }
 
     // 4) tools/call list_guard_tests — built-ins must be seeded into the
     //    hermetic SLUGTHUG_HOME and listed back.
@@ -146,12 +184,7 @@ fn mcp_stdio_full_handshake() {
         "catalog must be non-empty, got {text}"
     );
     // Spot-check a known built-in exists under some id.
-    let ids: Vec<String> = parsed
-        .as_object()
-        .unwrap()
-        .keys()
-        .cloned()
-        .collect();
+    let ids: Vec<String> = parsed.as_object().unwrap().keys().cloned().collect();
     assert!(
         ids.iter().any(|i| i.contains("no-unwrap")),
         "expected built-in no-unwrap guard in catalog, got {ids:?}"
@@ -178,7 +211,9 @@ fn mcp_stdio_full_handshake() {
         "validate_architecture must answer, got {val_resp}"
     );
     if has_result {
-        let text = val_resp["result"]["content"][0]["text"].as_str().expect("text");
+        let text = val_resp["result"]["content"][0]["text"]
+            .as_str()
+            .expect("text");
         let parsed: serde_json::Value =
             serde_json::from_str(text).expect("validation result must be JSON");
         assert_eq!(
@@ -201,16 +236,7 @@ fn mcp_stdio_rejects_unknown_tool() {
     let mut reader = BufReader::new(stdout);
     let mut next_id = 0i64;
 
-    let init_id = rpc_id(&mut next_id);
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codeguards-test","version":"0.0.1"}}}"#,
-    );
-    let _ = wait_for_response(&mut reader, init_id);
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-    );
+    let _ = handshake(&mut child, &mut reader, &mut next_id);
 
     let bad_id = rpc_id(&mut next_id);
     send(
@@ -223,9 +249,7 @@ fn mcp_stdio_rejects_unknown_tool() {
     // Must be either a JSON-RPC error or a structured isError result —
     // never a silent success, never a dead pipe.
     let jsonrpc_error = resp.get("error").is_some();
-    let structured_error = resp["result"]["isError"]
-        .as_bool()
-        .unwrap_or(false);
+    let structured_error = resp["result"]["isError"].as_bool().unwrap_or(false);
     assert!(
         jsonrpc_error || structured_error,
         "unknown tool must produce an error, got {resp}"
@@ -243,22 +267,11 @@ fn mcp_stdio_survives_garbage_lines_after_initialization() {
     let mut reader = BufReader::new(stdout);
     let mut next_id = 0i64;
 
-    // 1) Initialize first (required by MCP spec)
-    let init_id = rpc_id(&mut next_id);
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codeguards-test","version":"0.0.1"}}}"#,
-    );
-    let resp = wait_for_response(&mut reader, init_id);
+    // 1) + 2) Initialize first (required by MCP spec)
+    let resp = handshake(&mut child, &mut reader, &mut next_id);
     assert_eq!(
         resp["result"]["serverInfo"]["name"], "codeguards-mcp",
         "initialization must succeed"
-    );
-
-    // 2) Send notifications/initialized (required by MCP spec)
-    send(
-        &mut child,
-        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
     );
 
     // 3) Now send garbage — server must stay alive
@@ -268,13 +281,13 @@ fn mcp_stdio_survives_garbage_lines_after_initialization() {
     let bad_id = rpc_id(&mut next_id);
     send(
         &mut child,
-        &format!(
-            r#"{{"jsonrpc":"2.0","id":{},"method":"nonexistent/method"}}"#,
-            bad_id
-        ),
+        &format!(r#"{{"jsonrpc":"2.0","id":{bad_id},"method":"nonexistent/method"}}"#),
     );
     let bad_resp = wait_for_response(&mut reader, bad_id);
-    assert!(bad_resp.get("error").is_some(), "malformed request must get error response");
+    assert!(
+        bad_resp.get("error").is_some(),
+        "malformed request must get error response"
+    );
 
     // 5) Send a valid tools/list — must still work
     let list_id = rpc_id(&mut next_id);
@@ -283,7 +296,10 @@ fn mcp_stdio_survives_garbage_lines_after_initialization() {
         &format!("{{\"jsonrpc\":\"2.0\",\"id\":{list_id},\"method\":\"tools/list\"}}"),
     );
     let list_resp = wait_for_response(&mut reader, list_id);
-    assert!(list_resp["result"]["tools"].is_array(), "tools/list must work after garbage");
+    assert!(
+        list_resp["result"]["tools"].is_array(),
+        "tools/list must work after garbage"
+    );
 
     let _ = child.kill();
     let _ = child.wait();

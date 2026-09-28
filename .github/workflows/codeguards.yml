@@ -1,23 +1,43 @@
-name: CodeGuards
+name: CI
+
+# Replaces the previous workflow, which ran `pip install` + `python -m pytest`
+# against a repository whose tests are all Rust (`tests/*.rs`, zero `.py`).
+# That job exercised nothing. These steps run the code that actually exists.
 
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  test:
+  rust:
+    name: fmt / clippy / test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install mcp pyyaml pytest pytest-cov -q
-      - run: python -m pytest tests/ -v --tb=short --cov=. --cov-report=term-missing
-      - name: Coverage summary
-        run: python -m pytest tests/ --cov=. --cov-report=term --cov-fail-under=85
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      # The crate denies pedantic + unwrap_used + expect_used + panic in
+      # Cargo.toml, and clippy.toml allows those in tests, where a panic is the
+      # assertion mechanism. `-D warnings` also promotes the crate's own
+      # `missing_errors_doc` / `missing_panics_doc` warnings to failures.
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test

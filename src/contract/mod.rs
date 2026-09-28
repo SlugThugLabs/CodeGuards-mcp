@@ -23,7 +23,7 @@ pub struct ArchitectureContract {
     pub guard_settings: BTreeMap<String, serde_json::Value>,
 }
 
-/// Validation verdict returned by validate_architecture.
+/// Validation verdict returned by `validate_architecture`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ValidationResult {
     pub is_valid: bool,
@@ -35,11 +35,11 @@ pub struct ValidationResult {
 }
 
 /// Extracts TOML frontmatter delimited by `+++` fences from markdown content.
-/// 
+///
 /// # Errors
-/// 
-/// Returns [`CodeGuardsError::Contract`] if frontmatter fences are unbalanced  
-/// (unclosed `+++` or no closing `+++`), or [`CodeGuardsError::TomlParse`] if  
+///
+/// Returns [`CodeGuardsError::Contract`] if frontmatter fences are unbalanced\
+/// (unclosed `+++` or no closing `+++`), or [`CodeGuardsError::TomlParse`] if\
 /// the TOML content is malformed.
 pub fn parse_frontmatter(content: &str) -> Result<(ArchitectureContract, &str)> {
     let trimmed = content.trim_start();
@@ -48,26 +48,29 @@ pub fn parse_frontmatter(content: &str) -> Result<(ArchitectureContract, &str)> 
     }
 
     let rest = &trimmed[3..];
-    let end_idx = rest
-        .find("+++")
-        .ok_or_else(|| CodeGuardsError::Contract("Unclosed '+++' TOML frontmatter fence in ARCHITECTURE.md".to_string()))?;
+    let end_idx = rest.find("+++").ok_or_else(|| {
+        CodeGuardsError::Contract(
+            "Unclosed '+++' TOML frontmatter fence in ARCHITECTURE.md".to_string(),
+        )
+    })?;
 
     let toml_str = &rest[..end_idx];
     let body = &rest[end_idx + 3..];
 
-    let contract: ArchitectureContract = toml::from_str(toml_str).map_err(|e| CodeGuardsError::TomlParse {
-        path: PathBuf::from(".planning/ARCHITECTURE.md"),
-        source: e,
-    })?;
+    let contract: ArchitectureContract =
+        toml::from_str(toml_str).map_err(|e| CodeGuardsError::TomlParse {
+            path: PathBuf::from(".planning/ARCHITECTURE.md"),
+            source: e,
+        })?;
 
     Ok((contract, body))
 }
 
 /// Loads and parses .planning/ARCHITECTURE.md from a project directory.
-/// 
+///
 /// # Errors
-/// 
-/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing,  
+///
+/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing,\
 /// or [`CodeGuardsError::Io`] if the file cannot be read from disk.
 pub fn load_architecture(project_root: &Path) -> Result<ArchitectureContract> {
     let arch_file = project_root.join(".planning").join("ARCHITECTURE.md");
@@ -88,10 +91,10 @@ pub fn load_architecture(project_root: &Path) -> Result<ArchitectureContract> {
 }
 
 /// Validates .planning/ARCHITECTURE.md against disk reality and the guard-test catalog.
-/// 
+///
 /// # Errors
-/// 
-/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing or malformed,  
+///
+/// Returns [`CodeGuardsError::Contract`] if the ARCHITECTURE.md file is missing or malformed,\
 /// or [`CodeGuardsError::Io`] if the file cannot be read from disk.
 pub fn validate_architecture(
     project_root: &Path,
@@ -125,7 +128,9 @@ pub fn validate_architecture(
             let mod_dir = src_dir.join(module);
             if !rs_file.exists() && !mod_dir.exists() {
                 warnings.push(format!(
-                    "Declared module '{module}' does not exist on disk under src/ ({rs_file:?} or {mod_dir:?})"
+                    "Declared module '{module}' does not exist on disk under src/ ({} or {})",
+                    rs_file.display(),
+                    mod_dir.display()
                 ));
             }
         }
@@ -162,7 +167,8 @@ mod tests {
     #[test]
     fn frontmatter_parses_valid_toml_and_returns_body() {
         let content = "+++\nmodules = [\"analyzer\", \"server\"]\nenforce = [\"no-unwrap\"]\n+++\n# Body text here\n";
-        let (contract, body) = parse_frontmatter(content).expect("valid frontmatter should parse successfully");
+        let (contract, body) =
+            parse_frontmatter(content).expect("valid frontmatter should parse successfully");
         assert_eq!(contract.modules, vec!["analyzer", "server"]);
         assert_eq!(contract.enforce, vec!["no-unwrap"]);
         assert!(body.contains("Body text here"));
@@ -216,7 +222,11 @@ mod tests {
         let catalog = GuardCatalog::default();
         let result = validate_architecture(dir.path(), &catalog).expect("validation runs");
         assert!(!result.is_valid);
-        assert!(result.missing_guards.contains(&"this-guard-does-not-exist".to_string()));
+        assert!(
+            result
+                .missing_guards
+                .contains(&"this-guard-does-not-exist".to_string())
+        );
     }
 
     #[test]
@@ -234,7 +244,10 @@ mod tests {
         // Missing modules are warnings, not errors — still valid.
         assert!(result.is_valid);
         assert!(
-            result.warnings.iter().any(|w| w.contains("does_not_exist_on_disk")),
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("does_not_exist_on_disk")),
             "expected missing-module warning, got {:?}",
             result.warnings
         );

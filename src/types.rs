@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Severity level of a guard violation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,
@@ -42,7 +44,12 @@ pub struct GuardReport {
     pub project_root: PathBuf,
     pub total_files_checked: usize,
     pub violations: Vec<Violation>,
+    /// Rules a handler actually evaluated in this run.
     pub passed_tests: Vec<String>,
+    /// Enabled rules that no handler evaluated, so this run says nothing about
+    /// them. Kept separate from `passed_tests` so a guard with no implementation
+    /// cannot be reported as a success.
+    pub unevaluated_tests: Vec<String>,
     pub active_exceptions: Vec<ExceptionEntry>,
     pub duration_ms: u64,
 }
