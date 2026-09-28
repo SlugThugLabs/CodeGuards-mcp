@@ -10,6 +10,16 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  # Backstop: push-triggered runs have never fired on this repository (see the
+  # note below), so the gate also runs daily regardless of how code arrived.
+  schedule:
+    - cron: '17 9 * * *'
+
+# Push events do not appear to trigger workflow runs here — the workflow is
+# active, the repo is not a fork, Actions is enabled and the trigger matches
+# master. Until that is explained, treat this file as a backstop and rely on the
+# local pre-commit hook (`.planning/ARCHITECTURE.md`: "Git pre-commit hook runs
+# `codeguards-mcp check --diff`") as the enforcement point that cannot be skipped.
 
 env:
   CARGO_TERM_COLOR: always
